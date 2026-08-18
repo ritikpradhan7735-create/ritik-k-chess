@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ritik K Chess</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400..700&display=swap" rel="stylesheet">
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
+    <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+
+    <link rel="stylesheet" href="style.css?v=35">
+</head>
+
+<body>
+
+<div id="game-over-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <h2>Game Over</h2>
+        <p id="winner-text">Player 1 Won!</p>
+        <button class="btn btn-primary" onclick="closeModal()">Close</button>
+    </div>
+</div>
+
+<div id="admin-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content admin-modal-content">
+        <h2 id="admin-modal-title">Admin Login</h2>
+        
+        <form id="admin-login-step" onsubmit="verifyAdminAuth(event)">
+            <input type="text" id="admin-username" placeholder="Admin Username" required autocomplete="off">
+            <input type="password" id="admin-password" placeholder="Admin Password" required autocomplete="off">
+            <div class="modal-actions">
+                <button type="submit" class="btn btn-primary">Login ➔</button>
+                <button type="button" class="btn btn-secondary" onclick="closeAdminModal()">Cancel</button>
+            </div>
+        </form>
+
+        <form id="admin-match-step" onsubmit="submitCreateMatch(event)" style="display: none;">
+            <input type="text" id="admin-p1" placeholder="Player 1 Name (White)" required autocomplete="off">
+            <input type="text" id="admin-p2" placeholder="Player 2 Name (Black)" required autocomplete="off">
+            <div class="modal-actions">
+                <button type="submit" class="btn btn-primary">Create Match</button>
+                <button type="button" class="btn btn-secondary" onclick="closeAdminModal()">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="header">
+    <div class="logo-group">
+        <div class="header-left"></div> 
+        <h2>
+            <div class="logo-title-wrap">
+                <img src="logo.png" alt="RK Logo" class="rk-logo-img">
+                <span>Ritik K Chess</span>
+            </div>
+        </h2>
+        <div class="header-right">
+            <button class="btn btn-primary btn-sm" onclick="adminLogin()">Admin</button>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <div id="lobbyView">
+        <h3>Available Matches</h3>
+        <div id="matches-list">Loading matches...</div>
+    </div>
+
+    <div id="gameView" class="board-container" style="display: none;">
+        
+        <div class="sidebar-left">
+            <div class="panel-box timers-box">
+                <h4>Match Clocks</h4>
+                <div class="timer-card" id="black-timer-card">
+                    <span>Black:</span> <strong id="black-time">05:00</strong>
+                </div>
+                <div class="timer-card" id="white-timer-card">
+                    <span>White:</span> <strong id="white-time">05:00</strong>
+                </div>
+            </div>
+
+            <div class="panel-box">
+                <h4>Board Themes</h4>
+                <div class="theme-buttons">
+                    <button class="btn btn-sm btn-secondary" onclick="setBoardTheme('default')">Classic</button>
+                    <button class="btn btn-sm btn-secondary" onclick="setBoardTheme('wood')">Wood</button>
+                    <button class="btn btn-sm btn-secondary" onclick="setBoardTheme('neon')">Neon</button>
+                </div>
+            </div>
+
+            <div class="panel-box">
+                <h4>Move History</h4>
+                <div id="move-history">No moves played yet.</div>
+            </div>
+        </div>
+
+        <div class="board-center">
+            <div id="status">Select or host a match to play</div>
+            <div id="board"></div>
+            <div class="captured-bar">
+                <span>Captured: </span><span id="captured-pieces">-</span>
+            </div>
+        </div>
+        
+        <div class="sidebar-right">
+            <div class="controls">
+                <button class="btn btn-secondary" id="undoBtn" onclick="requestUndo()">Undo</button>
+                <button class="btn btn-warning" id="resetBtn" onclick="requestReset()">Reset</button>
+                <button class="btn btn-danger" id="exitBtn" onclick="exitToLobby()">Leave Match</button>
+            </div>
+
+            <div class="chat-container">
+                <h4>Live Match Chat</h4>
+                <div id="chat-messages"></div>
+                <form id="chat-form" onsubmit="sendChatMessage(event)">
+                    <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
+                    <button type="submit" class="btn btn-primary">Send</button>
+                </form>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+const socket = io();
+
+let board = null;
+let game = new Chess();
+let currentMatch = null;
+let myColor = null;
+let myName = "";
+let whitePlayerName = "";
+let blackPlayerName = "";
+let modalShown = false;
+let authenticatedAdmin = null;
+
+// Timers
+let whiteTime = 300;
+let blackTime = 300;
+let timerInterval = null;
+
+// Audio Synthesizer
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playSound(type) {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    if (type === 'move') {
+        osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.1);
+    } else if (type === 'capture') {
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.15);
+    } else if (type === 'check') {
+        osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.3);
+    }
+}
+
+socket.on('init-data', matches => { renderMatches(matches); });
+
+socket.on('match-state', data => {
+    if (data.matchId !== currentMatch) return;
+    game.load(data.fen);
+    if (board) {
+        board.position(data.fen);
+        if (myColor === 'b') board.orientation('black');
+        else board.orientation('white');
+    }
+    updateStatus();
+    updateMoveHistory();
+    startClocks();
+});
+
+socket.on('move', data => {
+    if (data.matchId !== currentMatch) return;
+    const move = game.move({
+        from: data.move.from,
+        to: data.move.to,
+        promotion: data.move.promotion
+    });
+    if (board) board.position(game.fen());
+
+    if (game.in_check()) playSound('check');
+    else if (move && move.captured) playSound('capture');
+    else playSound('move');
+
+    updateStatus();
+    updateMoveHistory();
+    highlightLastMove(data.move.from, data.move.to);
+});
+
+socket.on('undo', data => {
+    if (data.matchId !== currentMatch) return;
+    game.load(data.fen);
+    if (board) board.position(game.fen());
+    closeModal();
+    updateStatus();
+    updateMoveHistory();
+});
+
+socket.on('reset', data => {
+    if (data.matchId !== currentMatch) return;
+    game.reset();
+    if (board) board.position('start');
+    whiteTime = 300;
+    blackTime = 300;
+    updateTimerDisplay();
+    closeModal();
+    updateStatus();
+    updateMoveHistory();
+});
+
+socket.on('chat-message', data => {
+    if (data.matchId !== currentMatch) return;
+    appendChatMessage(data.sender, data.text);
+});
+
+socket.on('admin-response', (data) => {
+    if (data.success) {
+        alert("Match created successfully!");
+    } else {
+        alert("Invalid Admin Username or Password!");
+    }
+});
+
+function renderMatches(matches) {
+    const listEl = document.getElementById("matches-list");
+    if (!matches || !matches.length) {
+        listEl.innerHTML = '<p style="color:#94a3b8; font-size:1.4rem; padding: 10px;">No active matches found.</p>';
+        return;
+    }
+
+    listEl.innerHTML = matches.map(m => {
+        const isFull = m.p1Joined && m.p2Joined;
+
+        return `
+            <div class="match">
+                <div><strong>White:</strong> ${m.p1} <span class="status-dot ${m.p1Joined ? 'online' : 'offline'}"></span></div>
+                <div><strong>Black:</strong> ${m.p2} <span class="status-dot ${m.p2Joined ? 'online' : 'offline'}"></span></div>
+                <div style="margin-top: 10px;">
+                    ${isFull 
+                        ? `<button class="btn-secondary" onclick="spectateMatch('${m.id}', '${m.p1}', '${m.p2}')">Watch Match</button>`
+                        : `<button onclick="joinMatch('${m.id}', '${m.p1}', '${m.p2}', ${m.p1Joined || false}, ${m.p2Joined || false})">Join Game</button>`
+                    }
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function initBoard() {
+    if (board) { board.resize(); return; }
+
+    board = Chessboard('board', {
+        draggable: true,
+        position: 'start',
+        pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+        onDrop: function(source, target) {
+            if (!currentMatch || !myColor) return 'snapback';
+            if (game.turn() !== myColor) return 'snapback';
+
+            const move = game.move({ from: source, to: target, promotion: 'q' });
+            if (!move) return 'snapback';
+
+            board.position(game.fen());
+            socket.emit('move', { matchId: currentMatch, move: move, fen: game.fen() });
+
+            if (game.in_check()) playSound('check');
+            else if (move.captured) playSound('capture');
+            else playSound('move');
+
+            updateStatus();
+            updateMoveHistory();
+            highlightLastMove(source, target);
+        }
+    });
+
+    window.addEventListener('resize', () => { if (board) board.resize(); });
+}
+
+function highlightLastMove(from, to) {
+    $('#board .square-55d63').removeClass('highlight-square');
+    $(`#board .square-${from}`).addClass('highlight-square');
+    $(`#board .square-${to}`).addClass('highlight-square');
+}
+
+function setBoardTheme(theme) {
+    const boardEl = $('#board');
+    boardEl.removeClass('theme-wood theme-neon');
+    if (theme === 'wood') boardEl.addClass('theme-wood');
+    if (theme === 'neon') boardEl.addClass('theme-neon');
+}
+
+function startClocks() {
+    clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+        if (!currentMatch || game.game_over()) return;
+
+        if (game.turn() === 'w') {
+            if (whiteTime > 0) whiteTime--;
+        } else {
+            if (blackTime > 0) blackTime--;
+        }
+        updateTimerDisplay();
+    }, 1000);
+}
+
+function updateTimerDisplay() {
+    const format = (sec) => {
+        const m = Math.floor(sec / 60).toString().padStart(2, '0');
+        const s = (sec % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+    };
+    document.getElementById('white-time').innerText = format(whiteTime);
+    document.getElementById('black-time').innerText = format(blackTime);
+
+    if (game.turn() === 'w') {
+        $('#white-timer-card').addClass('active-timer');
+        $('#black-timer-card').removeClass('active-timer');
+    } else {
+        $('#black-timer-card').addClass('active-timer');
+        $('#white-timer-card').removeClass('active-timer');
+    }
+}
+
+function joinMatch(id, p1, p2, p1Joined, p2Joined) {
+    let options = [];
+    if (!p1Joined) options.push(`"${p1}" (White)`);
+    if (!p2Joined) options.push(`"${p2}" (Black)`);
+
+    let choice = prompt(`Choose your slot:\nType ${options.join(' or ')}:`);
+
+    if (choice === p1 && !p1Joined) { 
+        myColor = 'w'; 
+        myName = p1; 
+        socket.emit('claim-seat', { matchId: id, color: 'w' });
+    } else if (choice === p2 && !p2Joined) { 
+        myColor = 'b'; 
+        myName = p2; 
+        socket.emit('claim-seat', { matchId: id, color: 'b' });
+    } else {
+        return alert("Invalid selection or slot already taken!");
+    }
+
+    whitePlayerName = p1; 
+    blackPlayerName = p2;
+    currentMatch = id; 
+    modalShown = false;
+    whiteTime = 300; 
+    blackTime = 300;
+
+    socket.emit('join-match', id);
+    game.reset();
+    closeModal();
+
+    document.querySelector(".chat-container").style.display = "flex";
+    document.getElementById("undoBtn").style.display = "inline-block";
+    document.getElementById("resetBtn").style.display = "inline-block";
+
+    document.getElementById("chat-messages").innerHTML = "";
+    document.getElementById("lobbyView").style.display = "none";
+    document.getElementById("gameView").style.display = "flex";
+
+    setTimeout(() => {
+        initBoard();
+        if (myColor === 'b') board.orientation('black');
+        else board.orientation('white');
+        board.position(game.fen());
+        board.resize();
+        startClocks();
+    }, 50);
+
+    updateStatus();
+    updateMoveHistory();
+}
+
+function spectateMatch(id, p1, p2) {
+    currentMatch = id;
+    myColor = null;
+    myName = "Spectator";
+    whitePlayerName = p1;
+    blackPlayerName = p2;
+
+    socket.emit('join-match', id);
+
+    document.getElementById("lobbyView").style.display = "none";
+    document.getElementById("gameView").style.display = "flex";
+
+    document.querySelector(".chat-container").style.display = "none";
+    document.getElementById("undoBtn").style.display = "none";
+    document.getElementById("resetBtn").style.display = "none";
+    document.getElementById("exitBtn").style.display = "inline-block";
+
+    setTimeout(() => {
+        initBoard();
+        board.orientation('white');
+        board.position(game.fen());
+        board.resize();
+        startClocks();
+    }, 50);
+
+    updateStatus();
+    updateMoveHistory();
+}
+
+function showGameOverModal(text) {
+    document.getElementById("winner-text").innerText = text;
+    document.getElementById("game-over-modal").style.display = "flex";
+}
+
+function closeModal() {
+    document.getElementById("game-over-modal").style.display = "none";
+    modalShown = false;
+}
+
+function adminLogin() {
+    document.getElementById("admin-username").value = "";
+    document.getElementById("admin-password").value = "";
+    document.getElementById("admin-p1").value = "";
+    document.getElementById("admin-p2").value = "";
+    
+    document.getElementById("admin-modal-title").innerText = "Admin Login";
+    document.getElementById("admin-login-step").style.display = "flex";
+    document.getElementById("admin-match-step").style.display = "none";
+    
+    document.getElementById("admin-modal").style.display = "flex";
+}
+
+function closeAdminModal() {
+    document.getElementById("admin-modal").style.display = "none";
+    authenticatedAdmin = null;
+}
+
+function verifyAdminAuth(event) {
+    event.preventDefault();
+    const username = document.getElementById("admin-username").value.trim();
+    const password = document.getElementById("admin-password").value.trim();
+
+    if (!username || !password) {
+        return alert("Please fill in both username and password!");
+    }
+
+    socket.emit('verify-admin', { username, password });
+}
+
+socket.on('admin-verify-response', (data) => {
+    if (data.success) {
+        authenticatedAdmin = data.credentials;
+        document.getElementById("admin-modal-title").innerText = "Tournament Players";
+        document.getElementById("admin-login-step").style.display = "none";
+        document.getElementById("admin-match-step").style.display = "flex";
+    } else {
+        alert("Invalid Admin Username or Password!");
+        document.getElementById("admin-password").value = "";
+    }
+});
+
+function submitCreateMatch(event) {
+    event.preventDefault();
+    const p1 = document.getElementById("admin-p1").value.trim();
+    const p2 = document.getElementById("admin-p2").value.trim();
+
+    if (!p1 || !p2) return alert("Please enter both player names!");
+
+    socket.emit('create-match-admin', {
+        username: authenticatedAdmin.username,
+        password: authenticatedAdmin.password,
+        p1: p1,
+        p2: p2
+    });
+
+    closeAdminModal();
+}
+
+function requestUndo() {
+    if (!currentMatch) return;
+    socket.emit('undo', { matchId: currentMatch });
+}
+
+function requestReset() {
+    if (!currentMatch) return;
+    if (confirm("Reset the match?")) socket.emit('reset', { matchId: currentMatch });
+}
+
+function sendChatMessage(event) {
+    event.preventDefault();
+    const inputEl = document.getElementById("chat-input");
+    const text = inputEl.value.trim();
+    if (!text || !currentMatch) return;
+    socket.emit('chat-message', { matchId: currentMatch, sender: myName, text: text });
+    inputEl.value = "";
+}
+
+function appendChatMessage(sender, text) {
+    const chatContainer = document.getElementById("chat-messages");
+    const msgEl = document.createElement("div");
+    msgEl.className = "chat-msg";
+    msgEl.innerHTML = `<strong>${sender}:</strong> ${text}`;
+    chatContainer.appendChild(msgEl);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+function updateMoveHistory() {
+    const historyEl = document.getElementById("move-history");
+    const moves = game.history();
+
+    if (!moves.length) {
+        historyEl.innerHTML = "No moves played yet.";
+        document.getElementById("captured-pieces").innerText = "-";
+        return;
+    }
+
+    let historyHTML = "<ol class='history-list'>";
+    for (let i = 0; i < moves.length; i += 2) {
+        const moveNum = Math.floor(i / 2) + 1;
+        historyHTML += `<li><strong>${moveNum}.</strong> ${moves[i] || ""} ${moves[i + 1] || ""}</li>`;
+    }
+    historyHTML += "</ol>";
+    historyEl.innerHTML = historyHTML;
+
+    const historyFull = game.history({ verbose: true });
+    let captured = [];
+    historyFull.forEach(m => { if (m.captured) captured.push(m.captured.toUpperCase()); });
+    document.getElementById("captured-pieces").innerText = captured.join(" ") || "-";
+}
+
+function exitToLobby() {
+    if (currentMatch) socket.emit('leave-match', currentMatch);
+    currentMatch = null; myColor = null; myName = "";
+    clearInterval(timerInterval);
+    closeModal();
+    game.reset();
+
+    document.querySelector(".chat-container").style.display = "flex";
+    document.getElementById("undoBtn").style.display = "inline-block";
+    document.getElementById("resetBtn").style.display = "inline-block";
+
+    document.getElementById("gameView").style.display = "none";
+    document.getElementById("lobbyView").style.display = "block";
+}
+
+function updateStatus() {
+    if (!currentMatch) return;
+    let status = "";
+    if (game.in_checkmate()) {
+        const winner = game.turn() === 'w' ? blackPlayerName : whitePlayerName;
+        status = `Game Over: Checkmate!`;
+        if (!modalShown) { showGameOverModal(`${winner} Won!`); modalShown = true; }
+    } else if (game.in_draw()) {
+        status = "Game Over: Draw";
+        if (!modalShown) { showGameOverModal("Game Over: Draw!"); modalShown = true; }
+    } else if (game.in_check()) {
+        status = `Check! (${game.turn() === 'w' ? 'White' : 'Black'}'s turn)`;
+    } else {
+        const turnText = game.turn() === 'w' ? "White" : "Black";
+        const isMyTurn = game.turn() === myColor ? " (Your Turn)" : " (Opponent's Turn)";
+        status = `${turnText}'s Turn${isMyTurn}`;
+    }
+    document.getElementById("status").innerText = status;
+}
+</script>
+</body>
+</html>
