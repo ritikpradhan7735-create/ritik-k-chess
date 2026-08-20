@@ -16,10 +16,19 @@ const io = new Server(server, {
 });
 
 app.use(express.json({ limit: '1mb' }));
-
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
 
+// ============================================================
+// ADMIN CONFIGURATION
+// ============================================================
+const ADMIN_USERNAME = process.env.ADMIN_USER || "admin";
+const ADMIN_PASSWORD = process.env.ADMIN_PASS || "admin123";
+const ADMIN_TOKEN = "rk_chess_admin_auth_token_998877";
+
+// ============================================================
+// HOME PAGE
+// ============================================================
 app.get('/', (req, res) => {
     const publicIndexPath = path.join(__dirname, 'public', 'index.html');
     const rootIndexPath = path.join(__dirname, 'index.html');
@@ -33,35 +42,36 @@ app.get('/', (req, res) => {
     }
 });
 
-
 // ============================================================
-// MATCHES
+// MATCH STORAGE
 // ============================================================
-
 let matches = [];
 
+// ============================================================
+// PERMANENT NIPUN TOURNAMENT
+// ============================================================
 const BOT_MATCH_ID = 'bot_match_nipun_permanent';
-
 const botGameInstance = new Chess();
 
 const permanentBotMatch = {
     id: BOT_MATCH_ID,
+    name: '🏆 Tournament',
+    mode: 'Bot Tournament',
     p1: 'Waiting...',
     p2: '🤖 Nipun',
     p1Joined: false,
     p2Joined: true,
     fen: 'start',
     isBot: true,
+    permanent: true,
     gameInstance: botGameInstance
 };
 
 matches.push(permanentBotMatch);
 
-
 // ============================================================
-// BOT VALUES
+// BOT PIECE VALUES
 // ============================================================
-
 const PIECE_VALUES = {
     p: 10,
     n: 30,
@@ -71,493 +81,327 @@ const PIECE_VALUES = {
     k: 1000
 };
 
-
 // ============================================================
-// FAST BOT
+// FAST NIPUN BOT
 // ============================================================
-
 function getInstantBotMove(game) {
-
-    const moves = game.moves({
-        verbose: true
-    });
-
-    if (!moves.length) {
-        return null;
-    }
-
-
-    // --------------------------------------------------------
-    // 1. Checkmate if available
-    // --------------------------------------------------------
+    const moves = game.moves({ verbose: true });
+    if (!moves.length) return null;
 
     for (const move of moves) {
-
-        if (
-            move.san &&
-            move.san.includes('#')
-        ) {
-            return move;
-        }
+        if (move.san && move.san.includes('#')) return move;
     }
 
-
-    // --------------------------------------------------------
-    // 2. Capture valuable pieces
-    // --------------------------------------------------------
-
-    const captures = moves.filter(
-        move => move.captured
-    );
-
+    const captures = moves.filter(move => move.captured);
     if (captures.length > 0) {
-
-        captures.sort((a, b) => {
-
-            const aValue =
-                PIECE_VALUES[a.captured] || 0;
-
-            const bValue =
-                PIECE_VALUES[b.captured] || 0;
-
-            return bValue - aValue;
-        });
-
+        captures.sort((a, b) => (PIECE_VALUES[b.captured] || 0) - (PIECE_VALUES[a.captured] || 0));
         return captures[0];
     }
 
-
-    // --------------------------------------------------------
-    // 3. Check
-    // --------------------------------------------------------
-
     for (const move of moves) {
-
-        if (
-            move.san &&
-            move.san.includes('+')
-        ) {
-            return move;
-        }
+        if (move.san && move.san.includes('+')) return move;
     }
 
-
-    // --------------------------------------------------------
-    // 4. Random legal move
-    // --------------------------------------------------------
-
-    return moves[
-        Math.floor(Math.random() * moves.length)
-    ];
+    return moves[Math.floor(Math.random() * moves.length)];
 }
 
-
 // ============================================================
-// PUBLIC MATCH DATA
+// PUBLIC MATCH INFORMATION
 // ============================================================
-
 function toPublicMatch(match) {
-
     return {
         id: match.id,
+        name: match.name || '⚔️ Player Match',
+        mode: match.mode || 'Standard',
         p1: match.p1,
         p2: match.p2,
         p1Joined: match.p1Joined,
         p2Joined: match.p2Joined,
         isBot: match.isBot || false,
+        permanent: match.permanent || false,
         fen: match.fen || 'start'
     };
 }
 
-
 function broadcastMatches() {
-
-    io.emit(
-        'init-data',
-        matches.map(toPublicMatch)
-    );
+    io.emit('init-data', matches.map(toPublicMatch));
 }
 
+function findMatch(matchId) {
+    return matches.find(match => match.id === matchId);
+}
 
-// ============================================================
-// RELEASE SEAT
-// ============================================================
+function cleanupMatch(match) {
+    if (match.permanent) return;
+
+    if (!match.p1Joined && !match.p2Joined) {
+        const index = matches.indexOf(match);
+        if (index !== -1) {
+            matches.splice(index, 1);
+            console.log('Removed empty match:', match.id);
+            broadcastMatches();
+        }
+    }
+}
 
 function releaseSeat(socket) {
+    if (!socket.seatInfo) return;
 
-    if (!socket.seatInfo) {
+    const { matchId, color } = socket.seatInfo;
+    const match = findMatch(matchId);
+
+    if (!match) {
+        socket.seatInfo = null;
         return;
     }
 
-    const {
-        matchId,
-        color
-    } = socket.seatInfo;
-
-    const match = matches.find(
-        m => m.id === matchId
-    );
-
-    if (match) {
-
-        if (color === 'w') {
-
-            match.p1Joined = false;
-
-            if (match.isBot) {
-
-                match.p1 = 'Waiting...';
-
-                match.gameInstance.reset();
-
-                match.fen = 'start';
-            }
+    if (color === 'w') {
+        match.p1Joined = false;
+        if (match.isBot) {
+            match.p1 = 'Waiting...';
+            match.gameInstance.reset();
+            match.fen = 'start';
+        } else {
+            match.p1 = 'Waiting...';
         }
-
-        if (color === 'b') {
-            match.p2Joined = false;
-        }
-
-        broadcastMatches();
     }
 
-    socket.seatInfo = null;
-}
+    if (color === 'b') {
+        match.p2Joined = false;
+        if (!match.isBot) {
+            match.p2 = 'Waiting...';
+        }
+    }
 
+    socket.leave(matchId);
+    socket.seatInfo = null;
+
+    cleanupMatch(match);
+    broadcastMatches();
+}
 
 // ============================================================
 // API
 // ============================================================
-
 app.get('/api/matches', (req, res) => {
-
-    res.json({
-        matches: matches.map(toPublicMatch)
-    });
-
+    res.json({ matches: matches.map(toPublicMatch) });
 });
-
 
 // ============================================================
 // SOCKET CONNECTION
 // ============================================================
-
 io.on('connection', (socket) => {
+    console.log('Player connected:', socket.id);
 
-    console.log(
-        'Player connected:',
-        socket.id
-    );
+    socket.emit('init-data', matches.map(toPublicMatch));
 
-
-    // --------------------------------------------------------
-    // Send matches immediately
-    // --------------------------------------------------------
-
-    socket.emit(
-        'init-data',
-        matches.map(toPublicMatch)
-    );
-
-
-    // ========================================================
-    // JOIN MATCH
-    // ========================================================
-
-    socket.on('join-match', (matchId) => {
-
-        const match = matches.find(
-            m => m.id === matchId
-        );
-
-        if (!match) {
-            return;
-        }
-
-
-        // IMPORTANT:
-        // Actually join the Socket.IO room.
-        socket.join(matchId);
-
-
-        // Immediately send current board state
-        socket.emit(
-            'match-state',
-            {
-                matchId: matchId,
-                fen: match.gameInstance.fen()
-            }
-        );
-
+    // PERMISSION ACTION LISTENERS
+    socket.on('request-action', ({ matchId, action, sender }) => {
+        socket.to(matchId).emit('action-requested', { action, sender });
     });
 
+    socket.on('decline-action', ({ matchId, action, sender }) => {
+        socket.to(matchId).emit('action-declined', { action, sender });
+    });
 
-    // ========================================================
+    socket.on('confirm-action', ({ matchId, action }) => {
+        const match = findMatch(matchId);
+        if (!match) return;
+
+        if (action === 'reset') {
+            match.gameInstance.reset();
+            match.fen = 'start';
+            io.to(matchId).emit('reset-match', { matchId });
+        } else if (action === 'undo') {
+            match.gameInstance.undo();
+            if (match.isBot) {
+                match.gameInstance.undo();
+            }
+            match.fen = match.gameInstance.fen();
+            io.to(matchId).emit('undo-move', { matchId, isBot: match.isBot });
+        }
+    });
+
+    // ADMIN AUTHENTICATION
+    socket.on('admin-login', ({ username, password }) => {
+        if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+            socket.emit('admin-login-response', {
+                success: true,
+                token: ADMIN_TOKEN
+            });
+        } else {
+            socket.emit('admin-login-response', {
+                success: false,
+                message: 'Invalid Admin Username or Password'
+            });
+        }
+    });
+
+    // ADMIN CREATE MATCH
+    socket.on('admin-create-match', ({ token, p1, p2 }) => {
+        if (token !== ADMIN_TOKEN) {
+            return socket.emit('admin-login-response', {
+                success: false,
+                message: 'Unauthorized: Session expired or invalid token.'
+            });
+        }
+
+        const matchId = 'match_' + Date.now();
+        const newGame = new Chess();
+
+        const newMatch = {
+            id: matchId,
+            name: '⚔️ Admin Hosted Match',
+            mode: 'Standard',
+            p1: p1 || 'Waiting...',
+            p2: p2 || 'Waiting...',
+            p1Joined: false,
+            p2Joined: false,
+            fen: 'start',
+            isBot: false,
+            permanent: false,
+            gameInstance: newGame
+        };
+
+        matches.push(newMatch);
+        broadcastMatches();
+        socket.emit('match-created-by-admin', { matchId });
+    });
+
+    // JOIN MATCH
+    socket.on('join-match', (matchId) => {
+        const match = findMatch(matchId);
+        if (!match) return;
+
+        socket.join(matchId);
+        socket.emit('match-state', {
+            matchId,
+            fen: match.gameInstance.fen()
+        });
+    });
+
     // CLAIM SEAT
-    // ========================================================
+    socket.on('claim-seat', ({ matchId, color, name }) => {
+        const match = findMatch(matchId);
+        if (!match) return;
 
-    socket.on(
-        'claim-seat',
-        ({ matchId, color, name }) => {
+        const playerName = typeof name === 'string' && name.trim() ? name.trim() : 'Player';
+        socket.join(matchId);
 
-            const match = matches.find(
-                m => m.id === matchId
-            );
-
-            if (!match) {
+        if (color === 'w') {
+            if (match.isBot) {
+                match.gameInstance.reset();
+                match.fen = 'start';
+                match.p1 = playerName;
+                match.p1Joined = true;
+            } else {
+                if (match.p1Joined && match.p1 !== playerName) {
+                    socket.emit('seat-error', { message: 'White seat is already taken.' });
+                    return;
+                }
+                match.p1 = playerName;
+                match.p1Joined = true;
+            }
+        } else if (color === 'b') {
+            if (match.isBot) {
+                socket.emit('seat-error', { message: 'Nipun is already playing Black.' });
                 return;
             }
 
-            const newName =
-                name
-                    ? name.trim()
-                    : 'Player';
-
-
-            // ------------------------------------------------
-            // WHITE
-            // ------------------------------------------------
-
-            if (color === 'w') {
-
-                if (
-                    match.p1 !== 'Waiting...' &&
-                    match.p1 !== newName
-                ) {
-
-                    match.gameInstance.reset();
-
-                    match.fen = 'start';
-                }
-
-                match.p1Joined = true;
-
-                match.p1 =
-                    newName || match.p1;
+            if (match.p2Joined && match.p2 !== playerName) {
+                socket.emit('seat-error', { message: 'Black seat is already taken.' });
+                return;
             }
-
-
-            // ------------------------------------------------
-            // BLACK
-            // ------------------------------------------------
-
-            if (color === 'b') {
-
-                if (
-                    match.p2 !== '🤖 Nipun' &&
-                    match.p2 !== newName
-                ) {
-
-                    match.gameInstance.reset();
-
-                    match.fen = 'start';
-                }
-
-                match.p2Joined = true;
-
-                match.p2 =
-                    newName || match.p2;
-            }
-
-
-            // ------------------------------------------------
-            // BOT GAME
-            // ------------------------------------------------
-
-            if (match.isBot) {
-
-                match.gameInstance.reset();
-
-                match.fen = 'start';
-            }
-
-
-            socket.seatInfo = {
-                matchId,
-                color
-            };
-
-
-            broadcastMatches();
-
-        }
-    );
-
-
-    // ========================================================
-    // PLAYER MOVE
-    // ========================================================
-
-    socket.on('move', (data) => {
-
-        const match = matches.find(
-            m => m.id === data.matchId
-        );
-
-        if (!match) {
+            match.p2 = playerName;
+            match.p2Joined = true;
+        } else {
             return;
         }
 
+        socket.seatInfo = { matchId, color };
+        socket.emit('match-state', { matchId, fen: match.gameInstance.fen() });
+        broadcastMatches();
+    });
+
+    // PLAYER MOVE
+    socket.on('move', (data) => {
+        const match = findMatch(data.matchId);
+        if (!match) return;
+
+        if (!socket.seatInfo || socket.seatInfo.matchId !== data.matchId) return;
+
+        const playerColor = socket.seatInfo.color;
+        if (match.gameInstance.turn() !== playerColor) return;
 
         try {
+            const moveResult = match.gameInstance.move({
+                from: data.move.from,
+                to: data.move.to,
+                promotion: data.move.promotion || 'q'
+            });
 
-            // ------------------------------------------------
-            // Server validates player's move
-            // ------------------------------------------------
+            if (!moveResult) return;
 
-            const moveResult =
-                match.gameInstance.move({
-                    from: data.move.from,
-                    to: data.move.to,
-                    promotion:
-                        data.move.promotion || 'q'
-                });
+            match.fen = match.gameInstance.fen();
 
+            io.to(data.matchId).emit('move', {
+                matchId: data.matchId,
+                move: moveResult,
+                fen: match.fen,
+                color: moveResult.color
+            });
 
-            if (!moveResult) {
-                return;
-            }
-
-
-            match.fen =
-                match.gameInstance.fen();
-
-
-            // ------------------------------------------------
-            // Send player's move
-            // ------------------------------------------------
-
-            io.to(data.matchId).emit(
-                'move',
-                {
-                    matchId: data.matchId,
-
-                    move: moveResult,
-
-                    fen: match.fen,
-
-                    color: moveResult.color
-                }
-            );
-
-
-            // =================================================
-            // BOT RESPONSE
-            // =================================================
-
-            if (
-                match.isBot &&
-                !match.gameInstance.isGameOver()
-            ) {
-
-                /*
-                 * NO TIMER
-                 * NO setTimeout
-                 * NO artificial delay
-                 */
-
-                const botMove =
-                    getInstantBotMove(
-                        match.gameInstance
-                    );
-
-
+            // NIPUN RESPONSE
+            if (match.isBot && !match.gameInstance.isGameOver()) {
+                const botMove = getInstantBotMove(match.gameInstance);
                 if (botMove) {
-
-                    const botMoveResult =
-                        match.gameInstance.move(
-                            botMove
-                        );
-
-
+                    const botMoveResult = match.gameInstance.move(botMove);
                     if (botMoveResult) {
-
-                        match.fen =
-                            match.gameInstance.fen();
-
-
-                        // IMPORTANT:
-                        // Send directly to the player.
-                        // This avoids waiting for room delivery.
-
-                        socket.emit(
-                            'move',
-                            {
-                                matchId: data.matchId,
-
-                                move: botMoveResult,
-
-                                fen: match.fen,
-
-                                color:
-                                    botMoveResult.color
-                            }
-                        );
+                        match.fen = match.gameInstance.fen();
+                        socket.emit('move', {
+                            matchId: data.matchId,
+                            move: botMoveResult,
+                            fen: match.fen,
+                            color: botMoveResult.color
+                        });
                     }
                 }
             }
-
-        } catch (err) {
-
-            console.error(
-                'Illegal move caught:',
-                err.message
-            );
-
+        } catch (error) {
+            console.error('Move error:', error.message);
         }
-
     });
 
+    // CHAT
+    socket.on('chat-message', (data) => {
+        const match = findMatch(data.matchId);
+        if (!match) return;
 
-    // ========================================================
+        io.to(data.matchId).emit('chat-message', {
+            matchId: data.matchId,
+            sender: data.sender,
+            text: data.text
+        });
+    });
+
     // LEAVE MATCH
-    // ========================================================
-
-    socket.on(
-        'leave-match',
-        (id) => {
-
-            socket.leave(id);
-
+    socket.on('leave-match', (matchId) => {
+        if (socket.seatInfo && socket.seatInfo.matchId === matchId) {
             releaseSeat(socket);
+        } else {
+            socket.leave(matchId);
         }
-    );
+    });
 
-
-    // ========================================================
     // DISCONNECT
-    // ========================================================
-
-    socket.on(
-        'disconnect',
-        () => {
-
-            console.log(
-                'Player disconnected:',
-                socket.id
-            );
-
-            releaseSeat(socket);
-        }
-    );
-
+    socket.on('disconnect', () => {
+        console.log('Player disconnected:', socket.id);
+        releaseSeat(socket);
+    });
 });
 
-
-// ============================================================
 // START SERVER
-// ============================================================
-
-const PORT =
-    process.env.PORT || 3000;
-
-server.listen(
-    PORT,
-    () => {
-
-        console.log(
-            `🚀 Server running on http://localhost:${PORT}`
-        );
-
-    }
-);
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+});

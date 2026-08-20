@@ -21,11 +21,52 @@
 
 <body>
 
+<!-- GAME OVER MODAL -->
 <div id="game-over-modal" class="modal-overlay" style="display: none;">
     <div class="modal-content">
         <h2>Game Over</h2>
         <p id="winner-text">Player 1 Won!</p>
         <button class="btn btn-primary" onclick="closeModal()">Close</button>
+    </div>
+</div>
+
+<!-- PERMISSION REQUEST MODAL -->
+<div id="permission-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <h2>Action Request</h2>
+        <p id="permission-text">Opponent wants to reset the match.</p>
+        <div class="modal-actions" style="display: flex; gap: 10px; justify-content: center;">
+            <button class="btn btn-primary" onclick="respondPermission(true)">Accept</button>
+            <button class="btn btn-danger" onclick="respondPermission(false)">Decline</button>
+        </div>
+    </div>
+</div>
+
+<!-- ADMIN MODAL -->
+<div id="admin-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content admin-modal-content">
+        <h2>🔐 Admin Portal</h2>
+        
+        <!-- Step 1: Login -->
+        <div id="admin-login-step">
+            <input type="text" id="admin-user-input" placeholder="Admin Username" autocomplete="off">
+            <input type="password" id="admin-pass-input" placeholder="Admin Password">
+            <p id="admin-err-msg" style="color: #ef4444; font-size: 1.2rem; display: none; margin: 0;"></p>
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="submitAdminLogin()">Login</button>
+                <button class="btn btn-secondary" onclick="closeAdminModal()">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Step 2: Create Match -->
+        <div id="admin-match-step" style="display: none;">
+            <input type="text" id="admin-p1-input" placeholder="White Player Name (Optional)">
+            <input type="text" id="admin-p2-input" placeholder="Black Player Name (Optional)">
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="submitAdminCreateMatch()">Create Match</button>
+                <button class="btn btn-secondary" onclick="closeAdminModal()">Close</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -44,12 +85,17 @@
 
 <div class="container">
     <div id="lobbyView">
-        <h3>Available Matches</h3>
-        <div id="matches-list">Loading matches...</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 2px solid rgba(56, 189, 248, 0.3); padding-bottom: 8px;">
+            <h3 style="margin-bottom: 0; border-bottom: none; padding-bottom: 0;">Available Matches</h3>
+            <button class="btn btn-primary" onclick="showAdminLogin()">🔐 Admin</button>
+        </div>
+
+        <div id="matches-list">
+            Loading matches...
+        </div>
     </div>
 
     <div id="gameView" class="board-container" style="display: none;">
-        
         <div class="sidebar-left">
             <div class="panel-box timers-box">
                 <h4>Match Clocks</h4>
@@ -100,1502 +146,649 @@
                 </form>
             </div>
         </div>
-
     </div>
 </div>
 
 <script>
-
 const socket = io();
 
 let board = null;
-
 let game = new Chess();
-
 let currentMatch = null;
-
 let myColor = null;
-
 let myName = "";
-
 let whitePlayerName = "";
-
 let blackPlayerName = "";
-
 let isBotGame = false;
-
 let modalShown = false;
-
+let adminToken = null;
+let pendingActionType = null;
 
 // ============================================================
-// TIMERS
+// ADMIN PORTAL LOGIC
+// ============================================================
+
+function showAdminLogin() {
+    if (adminToken) {
+        document.getElementById("admin-login-step").style.display = "none";
+        document.getElementById("admin-match-step").style.display = "flex";
+    } else {
+        document.getElementById("admin-user-input").value = "";
+        document.getElementById("admin-pass-input").value = "";
+        document.getElementById("admin-err-msg").style.display = "none";
+        document.getElementById("admin-login-step").style.display = "flex";
+        document.getElementById("admin-match-step").style.display = "none";
+    }
+    document.getElementById("admin-modal").style.display = "flex";
+}
+
+function closeAdminModal() {
+    document.getElementById("admin-modal").style.display = "none";
+}
+
+function submitAdminLogin() {
+    const username = document.getElementById("admin-user-input").value.trim();
+    const password = document.getElementById("admin-pass-input").value.trim();
+
+    if (!username || !password) {
+        const errEl = document.getElementById("admin-err-msg");
+        errEl.innerText = "Please enter both username and password.";
+        errEl.style.display = "block";
+        return;
+    }
+
+    socket.emit("admin-login", { username, password });
+}
+
+socket.on("admin-login-response", (data) => {
+    if (data.success) {
+        adminToken = data.token;
+        document.getElementById("admin-err-msg").style.display = "none";
+        document.getElementById("admin-login-step").style.display = "none";
+        document.getElementById("admin-match-step").style.display = "flex";
+    } else {
+        const errEl = document.getElementById("admin-err-msg");
+        errEl.innerText = data.message || "Invalid credentials";
+        errEl.style.display = "block";
+    }
+});
+
+function submitAdminCreateMatch() {
+    const p1 = document.getElementById("admin-p1-input").value.trim();
+    const p2 = document.getElementById("admin-p2-input").value.trim();
+
+    if (!adminToken) {
+        alert("Unauthorized action! Please login again.");
+        showAdminLogin();
+        return;
+    }
+
+    socket.emit("admin-create-match", {
+        token: adminToken,
+        p1: p1 || "Waiting...",
+        p2: p2 || "Waiting..."
+    });
+
+    closeAdminModal();
+}
+
+socket.on("match-created-by-admin", () => {
+    alert("✅ Match created successfully by Admin! It is now live in the available matches list.");
+});
+
+// ============================================================
+// TIMERS & AUDIO
 // ============================================================
 
 let whiteTime = 300;
-
 let blackTime = 300;
-
 let timerInterval = null;
 
-
-// ============================================================
-// AUDIO
-// ============================================================
-
-const audioCtx =
-    new (window.AudioContext ||
-        window.webkitAudioContext)();
-
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 function playSound(type) {
-
     if (audioCtx.state === 'suspended') {
         audioCtx.resume();
     }
 
-    const osc =
-        audioCtx.createOscillator();
-
-    const gain =
-        audioCtx.createGain();
-
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
     osc.connect(gain);
-
     gain.connect(audioCtx.destination);
 
-
     if (type === 'move') {
-
-        osc.frequency.setValueAtTime(
-            400,
-            audioCtx.currentTime
-        );
-
-        gain.gain.setValueAtTime(
-            0.1,
-            audioCtx.currentTime
-        );
-
-        gain.gain.exponentialRampToValueAtTime(
-            0.01,
-            audioCtx.currentTime + 0.1
-        );
-
+        osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
         osc.start();
-
-        osc.stop(
-            audioCtx.currentTime + 0.1
-        );
-    }
-
-
-    else if (type === 'capture') {
-
-        osc.frequency.setValueAtTime(
-            800,
-            audioCtx.currentTime
-        );
-
-        gain.gain.setValueAtTime(
-            0.2,
-            audioCtx.currentTime
-        );
-
-        gain.gain.exponentialRampToValueAtTime(
-            0.01,
-            audioCtx.currentTime + 0.15
-        );
-
+        osc.stop(audioCtx.currentTime + 0.1);
+    } else if (type === 'capture') {
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
         osc.start();
-
-        osc.stop(
-            audioCtx.currentTime + 0.15
-        );
-    }
-
-
-    else if (type === 'check') {
-
-        osc.frequency.setValueAtTime(
-            1200,
-            audioCtx.currentTime
-        );
-
-        gain.gain.setValueAtTime(
-            0.25,
-            audioCtx.currentTime
-        );
-
-        gain.gain.exponentialRampToValueAtTime(
-            0.01,
-            audioCtx.currentTime + 0.3
-        );
-
+        osc.stop(audioCtx.currentTime + 0.15);
+    } else if (type === 'check') {
+        osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
         osc.start();
-
-        osc.stop(
-            audioCtx.currentTime + 0.3
-        );
+        osc.stop(audioCtx.currentTime + 0.3);
     }
 }
 
-
 // ============================================================
-// MATCH DATA
+// MATCH DATA & PERMISSION ACTIONS
 // ============================================================
 
-socket.on(
-    'init-data',
-    matches => {
-        renderMatches(matches);
+socket.on('init-data', matches => {
+    renderMatches(matches);
+});
+
+function requestUndo() {
+    if (!currentMatch) return;
+    if (isBotGame) {
+        socket.emit('confirm-action', { matchId: currentMatch, action: 'undo' });
+        return;
     }
-);
+    socket.emit('request-action', { matchId: currentMatch, action: 'undo', sender: myName });
+    alert("Undo request sent to opponent...");
+}
 
+function requestReset() {
+    if (!currentMatch) return;
+    if (isBotGame) {
+        socket.emit('confirm-action', { matchId: currentMatch, action: 'reset' });
+        return;
+    }
+    socket.emit('request-action', { matchId: currentMatch, action: 'reset', sender: myName });
+    alert("Reset request sent to opponent...");
+}
+
+socket.on('action-requested', (data) => {
+    pendingActionType = data.action;
+    const actionName = data.action === 'undo' ? 'undo the last move' : 'reset the match';
+    document.getElementById("permission-text").innerText = `${data.sender} wants to ${actionName}. Do you agree?`;
+    document.getElementById("permission-modal").style.display = "flex";
+});
+
+function respondPermission(accepted) {
+    document.getElementById("permission-modal").style.display = "none";
+    if (accepted) {
+        socket.emit('confirm-action', { matchId: currentMatch, action: pendingActionType });
+    } else {
+        socket.emit('decline-action', { matchId: currentMatch, action: pendingActionType, sender: myName });
+    }
+    pendingActionType = null;
+}
+
+socket.on('action-declined', (data) => {
+    const actionName = data.action === 'undo' ? 'Undo' : 'Reset';
+    alert(`❌ ${data.sender} declined your ${actionName} request.`);
+});
+
+socket.on('reset-match', (data) => {
+    if (data.matchId !== currentMatch) return;
+    game.reset();
+    if (board) {
+        board.position('start', false);
+    }
+    whiteTime = 300;
+    blackTime = 300;
+    updateStatus();
+    updateMoveHistory();
+    updateTimerDisplay();
+    alert("🔄 Match has been reset!");
+});
+
+socket.on('undo-move', (data) => {
+    if (data.matchId !== currentMatch) return;
+    game.undo();
+    if (data.isBot) {
+        game.undo();
+    }
+    if (board) {
+        board.position(game.fen(), false);
+    }
+    updateStatus();
+    updateMoveHistory();
+});
 
 // ============================================================
 // MATCH STATE
 // ============================================================
 
-socket.on(
-    'match-state',
-    data => {
+socket.on('match-state', data => {
+    if (data.matchId !== currentMatch) return;
 
-        if (
-            data.matchId !== currentMatch
-        ) {
-            return;
-        }
+    game.load(data.fen);
 
-
-        game.load(data.fen);
-
-
-        if (board) {
-
-            board.position(
-                data.fen,
-                false
-            );
-
-            board.orientation(
-                myColor === 'b'
-                    ? 'black'
-                    : 'white'
-            );
-        }
-
-
-        updateStatus();
-
-        updateMoveHistory();
-
-        updateTimerDisplay();
+    if (board) {
+        board.position(data.fen, false);
+        board.orientation(myColor === 'b' ? 'black' : 'white');
     }
-);
 
+    updateStatus();
+    updateMoveHistory();
+    updateTimerDisplay();
+});
 
 // ============================================================
 // MOVE RECEIVED
 // ============================================================
 
-socket.on(
-    'move',
-    data => {
+socket.on('move', data => {
+    if (data.matchId !== currentMatch) return;
 
-        if (
-            data.matchId !== currentMatch
-        ) {
-            return;
-        }
-
-
-        /*
-         * IMPORTANT:
-         *
-         * The player's own move was already
-         * applied locally in onDrop().
-         *
-         * Therefore DON'T apply it again.
-         */
-
-        if (data.color === myColor) {
-
-            updateStatus();
-
-            updateMoveHistory();
-
-            highlightLastMove(
-                data.move.from,
-                data.move.to
-            );
-
-            return;
-        }
-
-
-        // ----------------------------------------------------
-        // BOT / OPPONENT MOVE
-        // ----------------------------------------------------
-
-        const move =
-            game.move({
-                from: data.move.from,
-                to: data.move.to,
-                promotion:
-                    data.move.promotion || 'q'
-            });
-
-
-        if (!move) {
-            return;
-        }
-
-
-        // ----------------------------------------------------
-        // INSTANT BOARD UPDATE
-        // ----------------------------------------------------
-
-        if (board) {
-
-            board.position(
-                game.fen(),
-                false
-            );
-        }
-
-
-        // ----------------------------------------------------
-        // SOUND
-        // ----------------------------------------------------
-
-        if (game.in_check()) {
-
-            playSound('check');
-
-        } else if (move.captured) {
-
-            playSound('capture');
-
-        } else {
-
-            playSound('move');
-        }
-
-
+    if (data.color === myColor) {
         updateStatus();
-
         updateMoveHistory();
-
-        highlightLastMove(
-            data.move.from,
-            data.move.to
-        );
+        highlightLastMove(data.move.from, data.move.to);
+        return;
     }
-);
 
+    const move = game.move({
+        from: data.move.from,
+        to: data.move.to,
+        promotion: data.move.promotion || 'q'
+    });
+
+    if (!move) return;
+
+    if (board) {
+        board.position(game.fen(), false);
+    }
+
+    if (game.in_check()) {
+        playSound('check');
+    } else if (move.captured) {
+        playSound('capture');
+    } else {
+        playSound('move');
+    }
+
+    updateStatus();
+    updateMoveHistory();
+    highlightLastMove(data.move.from, data.move.to);
+});
 
 // ============================================================
 // CHAT
 // ============================================================
 
-socket.on(
-    'chat-message',
-    data => {
-
-        if (
-            data.matchId !== currentMatch ||
-            isBotGame
-        ) {
-            return;
-        }
-
-        appendChatMessage(
-            data.sender,
-            data.text
-        );
-    }
-);
-
+socket.on('chat-message', data => {
+    if (data.matchId !== currentMatch || isBotGame) return;
+    appendChatMessage(data.sender, data.text);
+});
 
 // ============================================================
 // RENDER MATCHES
 // ============================================================
 
 function renderMatches(matches) {
+    const listEl = document.getElementById("matches-list");
 
-    const listEl =
-        document.getElementById(
-            "matches-list"
-        );
-
-
-    if (
-        !matches ||
-        !matches.length
-    ) {
-
-        listEl.innerHTML =
-            '<p style="color:#94a3b8; font-size:1.4rem; padding:10px;">No active matches found.</p>';
-
+    if (!matches || !matches.length) {
+        listEl.innerHTML = `<p style="color:#94a3b8; font-size:1.4rem; padding:10px;">No tournaments available.</p>`;
         return;
     }
 
-
-    listEl.innerHTML =
-        matches.map(m => {
-
-            const isFull =
-                m.p1Joined &&
-                m.p2Joined;
-
-
+    listEl.innerHTML = matches.map(m => {
+        if (m.isBot) {
             return `
-                <div class="match">
-
+                <div class="match tournament-match">
+                    <div style="font-size:1.8rem; color:#38bdf8; font-weight:700; margin-bottom:8px;">
+                        ${m.name || '🏆 Tournament'}
+                    </div>
+                    <div style="color:#94a3b8; font-size:1.2rem; margin-bottom:12px;">
+                        ${m.mode || 'Bot Tournament'}
+                    </div>
                     <div>
-                        <strong>White:</strong>
-                        ${m.p1}
-
-                        <span class="status-dot ${
-                            m.p1Joined
-                                ? 'online'
-                                : 'offline'
-                        }"></span>
+                        <strong>Opponent:</strong> 🤖 Nipun
+                        <span class="status-dot online"></span>
                     </div>
-
-                    <div>
-                        <strong>Black:</strong>
-                        ${m.p2}
-
-                        <span class="status-dot ${
-                            m.p2Joined
-                                ? 'online'
-                                : 'offline'
-                        }"></span>
+                    <div style="margin-top:6px; color:#cbd5e1;">
+                        ⚡ Instant Bot
                     </div>
-
-                    <div style="margin-top:10px;">
-
-                        ${
-                            isFull && !m.isBot
-
-                            ? `
-                            <button
-                                class="btn-secondary"
-                                onclick="spectateMatch(
-                                    '${m.id}',
-                                    '${m.p1}',
-                                    '${m.p2}'
-                                )"
-                            >
-                                Watch Match
-                            </button>
-                            `
-
-                            : `
-                            <button
-                                onclick="joinMatch(
-                                    '${m.id}',
-                                    '${m.p1}',
-                                    '${m.p2}',
-                                    ${m.p1Joined || false},
-                                    ${m.p2Joined || false},
-                                    ${m.isBot || false}
-                                )"
-                            >
-                                Join Game
-                            </button>
-                            `
-                        }
-
-                    </div>
-
+                    <button onclick="joinMatch('${m.id}', '${m.p1}', '${m.p2}', ${m.p1Joined || false}, ${m.p2Joined || false}, true)">
+                        🏆 Play Tournament
+                    </button>
                 </div>
             `;
+        }
 
-        }).join('');
+        const isFull = m.p1Joined && m.p2Joined;
+
+        return `
+            <div class="match">
+                <div>
+                    <strong>White:</strong> ${m.p1}
+                    <span class="status-dot ${m.p1Joined ? 'online' : 'offline'}"></span>
+                </div>
+                <div>
+                    <strong>Black:</strong> ${m.p2}
+                    <span class="status-dot ${m.p2Joined ? 'online' : 'offline'}"></span>
+                </div>
+                <div style="margin-top:10px;">
+                    ${isFull
+                        ? `<button class="btn-secondary" onclick="spectateMatch('${m.id}', '${m.p1}', '${m.p2}')">Watch Match</button>`
+                        : `<button onclick="joinMatch('${m.id}', '${m.p1}', '${m.p2}', ${m.p1Joined || false}, ${m.p2Joined || false}, false)">Join Game</button>`
+                    }
+                </div>
+            </div>
+        `;
+    }).join('');
 }
-
 
 // ============================================================
 // CHESS BOARD
 // ============================================================
 
 function initBoard() {
-
     if (board) {
-
         board.resize();
-
         return;
     }
 
+    board = Chessboard('board', {
+        draggable: true,
+        position: 'start',
+        moveSpeed: 0,
+        snapSpeed: 0,
+        snapbackSpeed: 0,
+        pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
 
-    board =
-        Chessboard(
-            'board',
-            {
+        onDrop: function(source, target) {
+            if (!currentMatch || !myColor) return 'snapback';
+            if (game.turn() !== myColor) return 'snapback';
 
-                draggable: true,
+            const move = game.move({
+                from: source,
+                to: target,
+                promotion: 'q'
+            });
 
-                position: 'start',
+            if (!move) return 'snapback';
 
+            board.position(game.fen(), false);
 
-                // ============================================
-                // ZERO ANIMATION
-                // ============================================
+            socket.emit('move', {
+                matchId: currentMatch,
+                move: move,
+                fen: game.fen()
+            });
 
-                moveSpeed: 0,
+            if (game.in_check()) playSound('check');
+            else if (move.captured) playSound('capture');
+            else playSound('move');
 
-                snapSpeed: 0,
-
-                snapbackSpeed: 0,
-
-
-                pieceTheme:
-                    'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
-
-
-                // ============================================
-                // PLAYER MOVE
-                // ============================================
-
-                onDrop:
-                    function(source, target) {
-
-                        if (
-                            !currentMatch ||
-                            !myColor
-                        ) {
-                            return 'snapback';
-                        }
-
-
-                        if (
-                            game.turn() !== myColor
-                        ) {
-                            return 'snapback';
-                        }
-
-
-                        // ------------------------------------
-                        // Apply immediately locally
-                        // ------------------------------------
-
-                        const move =
-                            game.move({
-                                from: source,
-                                to: target,
-                                promotion: 'q'
-                            });
-
-
-                        if (!move) {
-                            return 'snapback';
-                        }
-
-
-                        // ------------------------------------
-                        // Update board immediately
-                        // ------------------------------------
-
-                        board.position(
-                            game.fen(),
-                            false
-                        );
-
-
-                        // ------------------------------------
-                        // Send to server
-                        // ------------------------------------
-
-                        socket.emit(
-                            'move',
-                            {
-                                matchId:
-                                    currentMatch,
-
-                                move: move,
-
-                                fen:
-                                    game.fen()
-                            }
-                        );
-
-
-                        // ------------------------------------
-                        // Sound
-                        // ------------------------------------
-
-                        if (
-                            game.in_check()
-                        ) {
-
-                            playSound('check');
-
-                        } else if (
-                            move.captured
-                        ) {
-
-                            playSound('capture');
-
-                        } else {
-
-                            playSound('move');
-                        }
-
-
-                        updateStatus();
-
-                        updateMoveHistory();
-
-                        highlightLastMove(
-                            source,
-                            target
-                        );
-                    }
-            }
-        );
-
-
-    window.addEventListener(
-        'resize',
-        () => {
-
-            if (board) {
-                board.resize();
-            }
-
+            updateStatus();
+            updateMoveHistory();
+            highlightLastMove(source, target);
         }
-    );
+    });
+
+    window.addEventListener('resize', () => {
+        if (board) board.resize();
+    });
 }
 
-
-// ============================================================
-// LAST MOVE
-// ============================================================
-
-function highlightLastMove(
-    from,
-    to
-) {
-
-    $('#board .square-55d63')
-        .removeClass(
-            'highlight-square'
-        );
-
-
-    $(`#board .square-${from}`)
-        .addClass(
-            'highlight-square'
-        );
-
-
-    $(`#board .square-${to}`)
-        .addClass(
-            'highlight-square'
-        );
+function highlightLastMove(from, to) {
+    $('#board .square-55d63').removeClass('highlight-square');
+    $(`#board .square-${from}`).addClass('highlight-square');
+    $(`#board .square-${to}`).addClass('highlight-square');
 }
-
-
-// ============================================================
-// BOARD THEME
-// ============================================================
 
 function setBoardTheme(theme) {
-
-    const boardEl =
-        $('#board');
-
-
-    boardEl.removeClass(
-        'theme-wood theme-neon'
-    );
-
-
-    if (theme === 'wood') {
-        boardEl.addClass('theme-wood');
-    }
-
-
-    if (theme === 'neon') {
-        boardEl.addClass('theme-neon');
-    }
+    const boardEl = $('#board');
+    boardEl.removeClass('theme-wood theme-neon');
+    if (theme === 'wood') boardEl.addClass('theme-wood');
+    if (theme === 'neon') boardEl.addClass('theme-neon');
 }
-
 
 // ============================================================
 // CLOCKS
 // ============================================================
 
 function startClocks() {
-
     clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+        if (!currentMatch || game.game_over()) return;
 
-
-    timerInterval =
-        setInterval(
-            () => {
-
-                if (
-                    !currentMatch ||
-                    game.game_over()
-                ) {
-                    return;
-                }
-
-
-                if (
-                    game.turn() === 'w'
-                ) {
-
-                    if (whiteTime > 0) {
-                        whiteTime--;
-                    }
-
-                } else {
-
-                    if (blackTime > 0) {
-                        blackTime--;
-                    }
-                }
-
-
-                updateTimerDisplay();
-
-            },
-            1000
-        );
+        if (game.turn() === 'w') {
+            if (whiteTime > 0) whiteTime--;
+        } else {
+            if (blackTime > 0) blackTime--;
+        }
+        updateTimerDisplay();
+    }, 1000);
 }
-
-
-// ============================================================
-// TIMER DISPLAY
-// ============================================================
 
 function updateTimerDisplay() {
+    const format = (sec) => {
+        const m = Math.floor(sec / 60).toString().padStart(2, '0');
+        const s = (sec % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+    };
 
-    const format =
-        (sec) => {
+    document.getElementById('white-time').innerText = format(whiteTime);
+    document.getElementById('black-time').innerText = format(blackTime);
 
-            const m =
-                Math.floor(sec / 60)
-                    .toString()
-                    .padStart(2, '0');
-
-
-            const s =
-                (sec % 60)
-                    .toString()
-                    .padStart(2, '0');
-
-
-            return `${m}:${s}`;
-        };
-
-
-    document.getElementById(
-        'white-time'
-    ).innerText =
-        format(whiteTime);
-
-
-    document.getElementById(
-        'black-time'
-    ).innerText =
-        format(blackTime);
-
-
-    if (
-        game.turn() === 'w'
-    ) {
-
-        $('#white-timer-card')
-            .addClass('active-timer');
-
-        $('#black-timer-card')
-            .removeClass('active-timer');
-
+    if (game.turn() === 'w') {
+        $('#white-timer-card').addClass('active-timer');
+        $('#black-timer-card').removeClass('active-timer');
     } else {
-
-        $('#black-timer-card')
-            .addClass('active-timer');
-
-        $('#white-timer-card')
-            .removeClass('active-timer');
+        $('#black-timer-card').addClass('active-timer');
+        $('#white-timer-card').removeClass('active-timer');
     }
 }
 
-
 // ============================================================
-// JOIN MATCH
+// JOIN & SPECTATE MATCH
 // ============================================================
 
-function joinMatch(
-    id,
-    p1,
-    p2,
-    p1Joined,
-    p2Joined,
-    isBot = false
-) {
-
-    const nickname =
-        prompt(
-            "Enter your player name:"
-        ) || "Player";
-
-
-    if (!nickname.trim()) {
-        return;
-    }
-
+function joinMatch(id, p1, p2, p1Joined, p2Joined, isBot = false) {
+    const nickname = prompt("Enter your player name:") || "Player";
+    if (!nickname.trim()) return;
 
     isBotGame = isBot;
 
-
-    // --------------------------------------------------------
-    // BOT GAME
-    // --------------------------------------------------------
-
     if (isBot) {
-
         myColor = 'w';
-
-        myName =
-            nickname.trim();
-
-
-        socket.emit(
-            'claim-seat',
-            {
-                matchId: id,
-                color: 'w',
-                name: myName
-            }
-        );
-
-    }
-
-
-    // --------------------------------------------------------
-    // NORMAL MATCH
-    // --------------------------------------------------------
-
-    else {
-
+        myName = nickname.trim();
+        socket.emit('claim-seat', { matchId: id, color: 'w', name: myName });
+    } else {
         if (!p1Joined) {
-
             myColor = 'w';
-
-            myName =
-                nickname.trim();
-
-
-            socket.emit(
-                'claim-seat',
-                {
-                    matchId: id,
-                    color: 'w',
-                    name: myName
-                }
-            );
-
-        }
-
-        else if (!p2Joined) {
-
+            myName = nickname.trim();
+            socket.emit('claim-seat', { matchId: id, color: 'w', name: myName });
+        } else if (!p2Joined) {
             myColor = 'b';
-
-            myName =
-                nickname.trim();
-
-
-            socket.emit(
-                'claim-seat',
-                {
-                    matchId: id,
-                    color: 'b',
-                    name: myName
-                }
-            );
-
-        }
-
-        else {
-
-            alert(
-                "Slot already taken!"
-            );
-
+            myName = nickname.trim();
+            socket.emit('claim-seat', { matchId: id, color: 'b', name: myName });
+        } else {
+            alert("Slot already taken!");
             return;
         }
     }
 
-
-    whitePlayerName =
-        myColor === 'w'
-            ? myName
-            : p1;
-
-
-    blackPlayerName =
-        myColor === 'b'
-            ? myName
-            : p2;
-
-
+    whitePlayerName = myColor === 'w' ? myName : p1;
+    blackPlayerName = myColor === 'b' ? myName : p2;
     currentMatch = id;
-
     modalShown = false;
-
-
     whiteTime = 300;
-
     blackTime = 300;
 
-
-    // --------------------------------------------------------
-    // JOIN SOCKET ROOM
-    // --------------------------------------------------------
-
-    socket.emit(
-        'join-match',
-        id
-    );
-
-
+    socket.emit('join-match', id);
     game.reset();
-
     closeModal();
 
+    const chatSection = document.getElementById("chat-section");
+    chatSection.style.display = isBotGame ? "none" : "flex";
 
-    // --------------------------------------------------------
-    // CHAT
-    // --------------------------------------------------------
+    document.getElementById("undoBtn").style.display = "inline-block";
+    document.getElementById("resetBtn").style.display = "inline-block";
+    document.getElementById("chat-messages").innerHTML = "";
 
-    const chatSection =
-        document.getElementById(
-            "chat-section"
-        );
+    document.getElementById("lobbyView").style.display = "none";
+    document.getElementById("gameView").style.display = "flex";
 
-
-    if (isBotGame) {
-
-        chatSection.style.display =
-            "none";
-
-    } else {
-
-        chatSection.style.display =
-            "flex";
-    }
-
-
-    document.getElementById(
-        "undoBtn"
-    ).style.display =
-        "inline-block";
-
-
-    document.getElementById(
-        "resetBtn"
-    ).style.display =
-        "inline-block";
-
-
-    document.getElementById(
-        "chat-messages"
-    ).innerHTML = "";
-
-
-    // --------------------------------------------------------
-    // SHOW GAME
-    // --------------------------------------------------------
-
-    document.getElementById(
-        "lobbyView"
-    ).style.display =
-        "none";
-
-
-    document.getElementById(
-        "gameView"
-    ).style.display =
-        "flex";
-
-
-    // --------------------------------------------------------
-    // BOARD
-    // --------------------------------------------------------
-
-    setTimeout(
-        () => {
-
-            initBoard();
-
-
-            board.orientation(
-                myColor === 'b'
-                    ? 'black'
-                    : 'white'
-            );
-
-
-            board.position(
-                game.fen(),
-                false
-            );
-
-
-            board.resize();
-
-
-            startClocks();
-
-        },
-        0
-    );
-
+    setTimeout(() => {
+        initBoard();
+        board.orientation(myColor === 'b' ? 'black' : 'white');
+        board.position(game.fen(), false);
+        board.resize();
+        startClocks();
+    }, 0);
 
     updateStatus();
-
     updateMoveHistory();
 }
 
-
-// ============================================================
-// SPECTATE
-// ============================================================
-
-function spectateMatch(
-    id,
-    p1,
-    p2
-) {
-
+function spectateMatch(id, p1, p2) {
     currentMatch = id;
-
     myColor = null;
-
     myName = "Spectator";
-
     whitePlayerName = p1;
-
     blackPlayerName = p2;
-
     isBotGame = false;
 
+    socket.emit('join-match', id);
 
-    socket.emit(
-        'join-match',
-        id
-    );
+    document.getElementById("lobbyView").style.display = "none";
+    document.getElementById("gameView").style.display = "flex";
+    document.getElementById("chat-section").style.display = "none";
+    document.getElementById("undoBtn").style.display = "none";
+    document.getElementById("resetBtn").style.display = "none";
+    document.getElementById("exitBtn").style.display = "inline-block";
 
-
-    document.getElementById(
-        "lobbyView"
-    ).style.display =
-        "none";
-
-
-    document.getElementById(
-        "gameView"
-    ).style.display =
-        "flex";
-
-
-    document.getElementById(
-        "chat-section"
-    ).style.display =
-        "none";
-
-
-    document.getElementById(
-        "undoBtn"
-    ).style.display =
-        "none";
-
-
-    document.getElementById(
-        "resetBtn"
-    ).style.display =
-        "none";
-
-
-    document.getElementById(
-        "exitBtn"
-    ).style.display =
-        "inline-block";
-
-
-    setTimeout(
-        () => {
-
-            initBoard();
-
-            board.orientation(
-                'white'
-            );
-
-            board.position(
-                game.fen(),
-                false
-            );
-
-            board.resize();
-
-            startClocks();
-
-        },
-        0
-    );
-
+    setTimeout(() => {
+        initBoard();
+        board.orientation('white');
+        board.position(game.fen(), false);
+        board.resize();
+        startClocks();
+    }, 0);
 
     updateStatus();
-
     updateMoveHistory();
 }
 
-
 // ============================================================
-// GAME OVER
+// GAME OVER & CHAT & MOVE HISTORY
 // ============================================================
 
 function showGameOverModal(text) {
-
-    document.getElementById(
-        "winner-text"
-    ).innerText =
-        text;
-
-
-    document.getElementById(
-        "game-over-modal"
-    ).style.display =
-        "flex";
+    document.getElementById("winner-text").innerText = text;
+    document.getElementById("game-over-modal").style.display = "flex";
 }
 
-
 function closeModal() {
-
-    document.getElementById(
-        "game-over-modal"
-    ).style.display =
-        "none";
-
-
+    document.getElementById("game-over-modal").style.display = "none";
     modalShown = false;
 }
 
-
-// ============================================================
-// UNDO
-// ============================================================
-
-function requestUndo() {
-
-    if (!currentMatch) {
-        return;
-    }
-
-
-    socket.emit(
-        'undo',
-        {
-            matchId: currentMatch
-        }
-    );
-}
-
-
-// ============================================================
-// RESET
-// ============================================================
-
-function requestReset() {
-
-    if (!currentMatch) {
-        return;
-    }
-
-
-    if (
-        confirm(
-            "Reset the match?"
-        )
-    ) {
-
-        socket.emit(
-            'reset',
-            {
-                matchId: currentMatch
-            }
-        );
-    }
-}
-
-
-// ============================================================
-// CHAT
-// ============================================================
-
 function sendChatMessage(event) {
-
     event.preventDefault();
+    const inputEl = document.getElementById("chat-input");
+    const text = inputEl.value.trim();
 
+    if (!text || !currentMatch || isBotGame) return;
 
-    const inputEl =
-        document.getElementById(
-            "chat-input"
-        );
-
-
-    const text =
-        inputEl.value.trim();
-
-
-    if (
-        !text ||
-        !currentMatch ||
-        isBotGame
-    ) {
-        return;
-    }
-
-
-    socket.emit(
-        'chat-message',
-        {
-            matchId: currentMatch,
-
-            sender: myName,
-
-            text: text
-        }
-    );
-
+    socket.emit('chat-message', {
+        matchId: currentMatch,
+        sender: myName,
+        text: text
+    });
 
     inputEl.value = "";
 }
 
-
-// ============================================================
-// APPEND CHAT
-// ============================================================
-
-function appendChatMessage(
-    sender,
-    text
-) {
-
-    const chatContainer =
-        document.getElementById(
-            "chat-messages"
-        );
-
-
-    const msgEl =
-        document.createElement(
-            "div"
-        );
-
-
-    msgEl.className =
-        "chat-msg";
-
-
-    msgEl.innerHTML =
-        `<strong>${sender}:</strong> ${text}`;
-
-
-    chatContainer.appendChild(
-        msgEl
-    );
-
-
-    chatContainer.scrollTop =
-        chatContainer.scrollHeight;
+function appendChatMessage(sender, text) {
+    const chatContainer = document.getElementById("chat-messages");
+    const msgEl = document.createElement("div");
+    msgEl.className = "chat-msg";
+    msgEl.innerHTML = `<strong>${sender}:</strong> ${text}`;
+    chatContainer.appendChild(msgEl);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
 }
-
-
-// ============================================================
-// MOVE HISTORY
-// ============================================================
 
 function updateMoveHistory() {
-
-    const historyEl =
-        document.getElementById(
-            "move-history"
-        );
-
-
-    const moves =
-        game.history();
-
+    const historyEl = document.getElementById("move-history");
+    const moves = game.history();
 
     if (!moves.length) {
-
-        historyEl.innerHTML =
-            "No moves played yet.";
-
-
-        document.getElementById(
-            "captured-pieces"
-        ).innerText =
-            "-";
-
-
+        historyEl.innerHTML = "No moves played yet.";
+        document.getElementById("captured-pieces").innerText = "-";
         return;
     }
 
-
-    let historyHTML =
-        "<ol class='history-list'>";
-
-
-    for (
-        let i = 0;
-        i < moves.length;
-        i += 2
-    ) {
-
-        const moveNum =
-            Math.floor(i / 2) + 1;
-
-
-        historyHTML +=
-            `<li>
-                <strong>${moveNum}.</strong>
-                ${moves[i] || ""}
-                ${moves[i + 1] || ""}
-            </li>`;
+    let historyHTML = "<ol class='history-list'>";
+    for (let i = 0; i < moves.length; i += 2) {
+        const moveNum = Math.floor(i / 2) + 1;
+        historyHTML += `<li><strong>${moveNum}.</strong> ${moves[i] || ""} ${moves[i + 1] || ""}</li>`;
     }
+    historyHTML += "</ol>";
+    historyEl.innerHTML = historyHTML;
 
-
-    historyHTML +=
-        "</ol>";
-
-
-    historyEl.innerHTML =
-        historyHTML;
-
-
-    const historyFull =
-        game.history({
-            verbose: true
-        });
-
-
+    const historyFull = game.history({ verbose: true });
     let captured = [];
-
-
-    historyFull.forEach(
-        m => {
-
-            if (m.captured) {
-
-                captured.push(
-                    m.captured.toUpperCase()
-                );
-            }
-        }
-    );
-
-
-    document.getElementById(
-        "captured-pieces"
-    ).innerText =
-        captured.join(" ") || "-";
+    historyFull.forEach(m => {
+        if (m.captured) captured.push(m.captured.toUpperCase());
+    });
+    document.getElementById("captured-pieces").innerText = captured.join(" ") || "-";
 }
-
-
-// ============================================================
-// EXIT
-// ============================================================
 
 function exitToLobby() {
-
     if (currentMatch) {
-
-        socket.emit(
-            'leave-match',
-            currentMatch
-        );
+        socket.emit('leave-match', currentMatch);
     }
-
 
     currentMatch = null;
-
     myColor = null;
-
     myName = "";
-
     isBotGame = false;
 
-
-    clearInterval(
-        timerInterval
-    );
-
-
+    clearInterval(timerInterval);
     closeModal();
-
-
     game.reset();
 
+    document.getElementById("chat-section").style.display = "flex";
+    document.getElementById("undoBtn").style.display = "inline-block";
+    document.getElementById("resetBtn").style.display = "inline-block";
+    document.getElementById("exitBtn").style.display = "inline-block";
 
-    document.getElementById(
-        "chat-section"
-    ).style.display =
-        "flex";
-
-
-    document.getElementById(
-        "undoBtn"
-    ).style.display =
-        "inline-block";
-
-
-    document.getElementById(
-        "resetBtn"
-    ).style.display =
-        "inline-block";
-
-
-    document.getElementById(
-        "exitBtn"
-    ).style.display =
-        "inline-block";
-
-
-    document.getElementById(
-        "gameView"
-    ).style.display =
-        "none";
-
-
-    document.getElementById(
-        "lobbyView"
-    ).style.display =
-        "block";
+    document.getElementById("gameView").style.display = "none";
+    document.getElementById("lobbyView").style.display = "block";
 }
-
-
-// ============================================================
-// STATUS
-// ============================================================
 
 function updateStatus() {
-
-    if (!currentMatch) {
-        return;
-    }
-
-
+    if (!currentMatch) return;
     let status = "";
 
-
-    // --------------------------------------------------------
-    // CHECKMATE
-    // --------------------------------------------------------
-
-    if (
-        game.in_checkmate()
-    ) {
-
-        const winner =
-            game.turn() === 'w'
-                ? blackPlayerName
-                : whitePlayerName;
-
-
-        status =
-            "Game Over: Checkmate!";
-
-
+    if (game.in_checkmate()) {
+        const winner = game.turn() === 'w' ? blackPlayerName : whitePlayerName;
+        status = "Game Over: Checkmate!";
         if (!modalShown) {
-
-            showGameOverModal(
-                `${winner} Won!`
-            );
-
+            showGameOverModal(`${winner} Won!`);
             modalShown = true;
         }
-    }
-
-
-    // --------------------------------------------------------
-    // DRAW
-    // --------------------------------------------------------
-
-    else if (
-        game.in_draw()
-    ) {
-
-        status =
-            "Game Over: Draw";
-
-
+    } else if (game.in_draw()) {
+        status = "Game Over: Draw";
         if (!modalShown) {
-
-            showGameOverModal(
-                "Game Over: Draw!"
-            );
-
+            showGameOverModal("Game Over: Draw!");
             modalShown = true;
         }
+    } else if (game.in_check()) {
+        status = `Check! (${game.turn() === 'w' ? 'White' : 'Black'}'s turn)`;
+    } else {
+        const turnText = game.turn() === 'w' ? "White" : "Black";
+        const isMyTurn = game.turn() === myColor ? " (Your Turn)" : " (Opponent's Turn)";
+        status = `${turnText}'s Turn${isMyTurn}`;
     }
 
-
-    // --------------------------------------------------------
-    // CHECK
-    // --------------------------------------------------------
-
-    else if (
-        game.in_check()
-    ) {
-
-        status =
-            `Check! (${
-                game.turn() === 'w'
-                    ? 'White'
-                    : 'Black'
-            }'s turn)`;
-    }
-
-
-    // --------------------------------------------------------
-    // NORMAL TURN
-    // --------------------------------------------------------
-
-    else {
-
-        const turnText =
-            game.turn() === 'w'
-                ? "White"
-                : "Black";
-
-
-        const isMyTurn =
-            game.turn() === myColor
-                ? " (Your Turn)"
-                : " (Opponent's Turn)";
-
-
-        status =
-            `${turnText}'s Turn${isMyTurn}`;
-    }
-
-
-    document.getElementById(
-        "status"
-    ).innerText =
-        status;
+    document.getElementById("status").innerText = status;
 }
-
 </script>
 </body>
 </html>
