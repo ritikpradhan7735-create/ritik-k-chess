@@ -141,6 +141,7 @@ body {
     gap: 12px;
 }
 
+/* PNG Logo Styling with Cyan Glow */
 .rk-logo-img {
     height: 42px;
     width: auto;
@@ -189,7 +190,7 @@ body {
 .btn-warning { background: #f59e0b; color: #090d16; }
 .btn-danger { background: #ef4444; color: #ffffff; }
 
-/* Status Dots */
+/* Status Dots for Online/Offline Seats */
 .status-dot {
     display: inline-block;
     width: 10px;
@@ -207,12 +208,13 @@ body {
     background-color: #475569;
 }
 
-/* Container & Views */
+/* Main Container */
 .container { 
     width: 100%; 
     max-width: 1280px; 
 }
 
+/* Lobby View */
 #lobbyView {
     background: #131b2e;
     padding: 24px;
@@ -227,6 +229,9 @@ body {
     font-size: 1.8rem;
     font-weight: 700;
     text-transform: uppercase;
+    margin-bottom: 16px;
+    border-bottom: 2px solid rgba(56, 189, 248, 0.3);
+    padding-bottom: 8px;
 }
 
 .match {
@@ -290,6 +295,7 @@ body {
     padding-bottom: 4px;
 }
 
+/* Timers Styling */
 .timer-card {
     background: #1e293b;
     padding: 8px 14px;
@@ -350,6 +356,7 @@ body {
 .theme-neon .white-1e1d7 { background-color: #2a2a3c !important; }
 .theme-neon .black-3c85d { background-color: #00d2ff !important; }
 
+/* Move Highlight Square */
 .highlight-square {
     background-color: rgba(245, 158, 11, 0.5) !important;
 }
@@ -382,6 +389,7 @@ body {
     flex: 1; 
 }
 
+/* Chat Styling */
 .chat-container {
     width: 100%;
     background: #0a0f1d;
@@ -429,7 +437,7 @@ body {
     outline: none;
 }
 
-/* Desktop Layout Adjustments */
+/* Desktop View */
 @media (min-width: 992px) {
     .board-container { 
         flex-direction: row; 
@@ -459,34 +467,4 @@ body {
     #move-history { 
         height: 180px; 
     }
-}
-
-.tournament-match {
-    border-left: 5px solid #38bdf8;
-    background: linear-gradient(135deg, #172554, #1e293b);
-    box-shadow: 0 0 20px rgba(56, 189, 248, 0.15);
-    position: relative;
-    overflow: hidden;
-}
-
-.tournament-match::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    right: 0;
-    width: 100px;
-    height: 100px;
-    background: radial-gradient(circle, rgba(56, 189, 248, 0.15), transparent 70%);
-    pointer-events: none;
-}
-
-.tournament-match button {
-    background: #38bdf8;
-    color: #090d16;
-    font-weight: 700;
-    box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
-}
-
-.tournament-match button:hover {
-    box-shadow: 0 0 20px rgba(56, 189, 248, 0.55);
 }
