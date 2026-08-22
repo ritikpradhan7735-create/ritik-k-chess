@@ -16,79 +16,72 @@
     <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
     <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
 
-    <link rel="stylesheet" href="style.css?v=35">
+    <link rel="stylesheet" href="style.css?v=100">
 </head>
 
 <body>
 
-<div id="game-over-modal" class="modal-overlay" style="display: none;">
-    <div class="modal-content">
-        <h2>Game Over</h2>
-        <p id="winner-text">Player 1 Won!</p>
-        <button class="btn btn-primary" onclick="closeModal()">Close</button>
-    </div>
-</div>
-
-<div id="admin-modal" class="modal-overlay" style="display: none;">
-    <div class="modal-content admin-modal-content">
-        <h2 id="admin-modal-title">Admin Login</h2>
-        
-        <form id="admin-login-step" onsubmit="verifyAdminAuth(event)">
-            <input type="text" id="admin-username" placeholder="Admin Username" required autocomplete="off">
-            <input type="password" id="admin-password" placeholder="Admin Password" required autocomplete="off">
-            <div class="modal-actions">
-                <button type="submit" class="btn btn-primary">Login ➔</button>
-                <button type="button" class="btn btn-secondary" onclick="closeAdminModal()">Cancel</button>
-            </div>
-        </form>
-
-        <form id="admin-match-step" onsubmit="submitCreateMatch(event)" style="display: none;">
-            <input type="text" id="admin-p1" placeholder="Player 1 Name (White)" required autocomplete="off">
-            <input type="text" id="admin-p2" placeholder="Player 2 Name (Black)" required autocomplete="off">
-            <div class="modal-actions">
-                <button type="submit" class="btn btn-primary">Create Match</button>
-                <button type="button" class="btn btn-secondary" onclick="closeAdminModal()">Cancel</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<div id="header">
+<header id="header">
     <div class="logo-group">
-        <div class="header-left"></div> 
-        <h2>
-            <div class="logo-title-wrap">
+        <div class="header-spacer"></div>
+
+        <h1>
+            <span class="logo-title-wrap">
                 <img src="logo.png" alt="RK Logo" class="rk-logo-img">
                 <span>Ritik K Chess</span>
+            </span>
+        </h1>
+
+        <button class="btn btn-primary btn-sm" onclick="openAdminPortal()">
+            🔐 Admin
+        </button>
+    </div>
+</header>
+
+<main class="container">
+
+    <!-- ===================== LOBBY ===================== -->
+    <section id="lobbyView">
+        <div class="lobby-heading">
+            <div>
+                <h2>🏆 Tournament Lobby</h2>
+                <p>Create and join tournament matches.</p>
             </div>
-        </h2>
-        <div class="header-right">
-            <button class="btn btn-primary btn-sm" onclick="adminLogin()">Admin</button>
         </div>
-    </div>
-</div>
 
-<div class="container">
-    <div id="lobbyView">
-        <h3>Available Matches</h3>
         <div id="matches-list">Loading matches...</div>
-    </div>
+    </section>
 
-    <div id="gameView" class="board-container" style="display: none;">
-        
-        <div class="sidebar-left">
-            <div class="panel-box timers-box">
-                <h4>Match Clocks</h4>
-                <div class="timer-card" id="black-timer-card">
-                    <span>Black:</span> <strong id="black-time">05:00</strong>
-                </div>
-                <div class="timer-card" id="white-timer-card">
-                    <span>White:</span> <strong id="white-time">05:00</strong>
+    <!-- ===================== GAME ===================== -->
+    <section id="gameView" class="board-container" style="display:none;">
+
+        <aside class="sidebar-left">
+
+            <div class="panel-box tournament-panel">
+                <h3 id="game-tournament-name">Tournament</h3>
+                <div class="players-line">
+                    <span id="game-white-name">White</span>
+                    <span>⚔️</span>
+                    <span id="game-black-name">Black</span>
                 </div>
             </div>
 
             <div class="panel-box">
-                <h4>Board Themes</h4>
+                <h4>⏱️ Match Clocks</h4>
+
+                <div class="timer-card" id="white-timer-card">
+                    <span>White</span>
+                    <strong id="white-time">05:00</strong>
+                </div>
+
+                <div class="timer-card" id="black-timer-card">
+                    <span>Black</span>
+                    <strong id="black-time">05:00</strong>
+                </div>
+            </div>
+
+            <div class="panel-box">
+                <h4>🎨 Board Themes</h4>
                 <div class="theme-buttons">
                     <button class="btn btn-sm btn-secondary" onclick="setBoardTheme('default')">Classic</button>
                     <button class="btn btn-sm btn-secondary" onclick="setBoardTheme('wood')">Wood</button>
@@ -97,36 +90,107 @@
             </div>
 
             <div class="panel-box">
-                <h4>Move History</h4>
+                <h4>📜 Move History</h4>
                 <div id="move-history">No moves played yet.</div>
             </div>
-        </div>
 
-        <div class="board-center">
-            <div id="status">Select or host a match to play</div>
+        </aside>
+
+        <section class="board-center">
+            <div id="status">White's Turn</div>
             <div id="board"></div>
+
             <div class="captured-bar">
-                <span>Captured: </span><span id="captured-pieces">-</span>
+                <span>Captured:</span>
+                <span id="captured-pieces">-</span>
             </div>
-        </div>
-        
-        <div class="sidebar-right">
+        </section>
+
+        <aside class="sidebar-right">
+
             <div class="controls">
-                <button class="btn btn-secondary" id="undoBtn" onclick="requestUndo()">Undo</button>
-                <button class="btn btn-warning" id="resetBtn" onclick="requestReset()">Reset</button>
-                <button class="btn btn-danger" id="exitBtn" onclick="exitToLobby()">Leave Match</button>
+                <button class="btn btn-secondary" id="undoBtn" onclick="requestUndo()">🔄 Undo</button>
+                <button class="btn btn-warning" id="resetBtn" onclick="requestReset()">↻ Reset</button>
+                <button class="btn btn-danger" id="exitBtn" onclick="exitToLobby()">🚪 Leave</button>
             </div>
 
             <div class="chat-container">
-                <h4>Live Match Chat</h4>
+                <h4>💬 Live Match Chat</h4>
+
                 <div id="chat-messages"></div>
+
                 <form id="chat-form" onsubmit="sendChatMessage(event)">
-                    <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
-                    <button type="submit" class="btn btn-primary">Send</button>
+                    <input id="chat-input" type="text" maxlength="500"
+                           placeholder="Type a message..." autocomplete="off">
+                    <button class="btn btn-primary" type="submit">Send</button>
                 </form>
+            </div>
+
+        </aside>
+    </section>
+</main>
+
+<!-- ===================== ADMIN MODAL ===================== -->
+<div id="admin-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content admin-modal-content">
+
+        <div id="admin-login-step">
+            <h2>🔐 Admin Login</h2>
+
+            <p class="modal-help">
+                Login to create tournament matches.
+            </p>
+
+            <input id="admin-username" type="text"
+                   placeholder="Admin Username" autocomplete="off">
+
+            <input id="admin-password" type="password"
+                   placeholder="Admin Password" autocomplete="off">
+
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="loginAdmin()">Login ➜</button>
+                <button class="btn btn-secondary" onclick="closeAdminPortal()">Cancel</button>
             </div>
         </div>
 
+        <div id="admin-match-step" style="display:none;">
+            <h2>🏆 Admin Tournament Portal</h2>
+
+            <p class="modal-help">
+                Create a match that appears in the public lobby.
+            </p>
+
+            <input id="admin-match-name" type="text"
+                   maxlength="80"
+                   placeholder="🏆 Tournament / Match Name"
+                   autocomplete="off">
+
+            <input id="admin-player-1" type="text"
+                   maxlength="40"
+                   placeholder="♙ White Player"
+                   autocomplete="off">
+
+            <input id="admin-player-2" type="text"
+                   maxlength="40"
+                   placeholder="♟ Black Player"
+                   autocomplete="off">
+
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="createAdminMatch()">⚔️ Create Match</button>
+                <button class="btn btn-secondary" onclick="adminLogout()">Logout</button>
+                <button class="btn btn-danger" onclick="closeAdminPortal()">Close</button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ===================== GAME OVER MODAL ===================== -->
+<div id="game-over-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content">
+        <h2 id="game-over-title">Game Over</h2>
+        <p id="winner-text">Game finished.</p>
+        <button class="btn btn-primary" onclick="closeModal()">Close</button>
     </div>
 </div>
 
@@ -135,298 +199,804 @@ const socket = io();
 
 let board = null;
 let game = new Chess();
+
 let currentMatch = null;
 let myColor = null;
-let myName = "";
-let whitePlayerName = "";
-let blackPlayerName = "";
+let myName = "Player";
+
+let whitePlayerName = "White";
+let blackPlayerName = "Black";
+let currentTournamentName = "Tournament";
+
+let isSpectator = false;
 let modalShown = false;
+
+let isAdmin = false;
 let authenticatedAdmin = null;
 
-// Timers
 let whiteTime = 300;
 let blackTime = 300;
 let timerInterval = null;
 
-// Audio Synthesizer
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-function playSound(type) {
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
+let audioCtx = null;
 
-    if (type === 'move') {
-        osc.frequency.setValueAtTime(400, audioCtx.currentTime);
-        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.1);
-    } else if (type === 'capture') {
-        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
-        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.15);
-    } else if (type === 'check') {
-        osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
-        gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.3);
+function ensureAudio() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
+    if (audioCtx.state === "suspended") audioCtx.resume();
 }
 
-socket.on('init-data', matches => { renderMatches(matches); });
+function playSound(type) {
+    try {
+        ensureAudio();
 
-socket.on('match-state', data => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        const now = audioCtx.currentTime;
+
+        const freq =
+            type === "capture" ? 800 :
+            type === "check" ? 1200 : 400;
+
+        osc.frequency.setValueAtTime(freq, now);
+        gain.gain.setValueAtTime(type === "check" ? 0.2 : 0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+
+        osc.start(now);
+        osc.stop(now + 0.15);
+    } catch {}
+}
+
+/* ===================== SOCKET EVENTS ===================== */
+
+socket.on("init-data", matches => {
+    renderMatches(matches);
+});
+
+socket.on("match-state", data => {
     if (data.matchId !== currentMatch) return;
+
     game.load(data.fen);
+
+    currentTournamentName = data.tournamentName || currentTournamentName;
+    whitePlayerName = data.p1 || whitePlayerName;
+    blackPlayerName = data.p2 || blackPlayerName;
+
+    updatePlayerHeader();
+
     if (board) {
-        board.position(data.fen);
-        if (myColor === 'b') board.orientation('black');
-        else board.orientation('white');
+        board.position(data.fen, false);
+        board.orientation(myColor === "b" ? "black" : "white");
     }
+
     updateStatus();
     updateMoveHistory();
+    updateTimerDisplay();
+});
+
+socket.on("move", data => {
+    if (data.matchId !== currentMatch) return;
+
+    /*
+       The server sends the authoritative FEN.
+       Loading the FEN avoids the old duplicate-move bug
+       where a player's local move was applied twice.
+    */
+    game.load(data.fen);
+
+    if (board) board.position(data.fen, false);
+
+    if (game.in_check()) playSound("check");
+    else if (data.move && data.move.captured) playSound("capture");
+    else playSound("move");
+
+    highlightLastMove(data.move.from, data.move.to);
+    updateStatus();
+    updateMoveHistory();
+    updateTimerDisplay();
+});
+
+socket.on("undo", data => {
+    if (data.matchId !== currentMatch) return;
+
+    game.load(data.fen);
+    if (board) board.position(data.fen, false);
+
+    closeModal();
+    updateStatus();
+    updateMoveHistory();
+    updateTimerDisplay();
+});
+
+socket.on("reset", data => {
+    if (data.matchId !== currentMatch) return;
+
+    game.load(data.fen);
+    if (board) board.position(data.fen, false);
+
+    whiteTime = 300;
+    blackTime = 300;
+
+    closeModal();
+    updateStatus();
+    updateMoveHistory();
+    updateTimerDisplay();
     startClocks();
 });
 
-socket.on('move', data => {
-    if (data.matchId !== currentMatch) return;
-    const move = game.move({
-        from: data.move.from,
-        to: data.move.to,
-        promotion: data.move.promotion
-    });
-    if (board) board.position(game.fen());
-
-    if (game.in_check()) playSound('check');
-    else if (move && move.captured) playSound('capture');
-    else playSound('move');
-
-    updateStatus();
-    updateMoveHistory();
-    highlightLastMove(data.move.from, data.move.to);
-});
-
-socket.on('undo', data => {
-    if (data.matchId !== currentMatch) return;
-    game.load(data.fen);
-    if (board) board.position(game.fen());
-    closeModal();
-    updateStatus();
-    updateMoveHistory();
-});
-
-socket.on('reset', data => {
-    if (data.matchId !== currentMatch) return;
-    game.reset();
-    if (board) board.position('start');
-    whiteTime = 300;
-    blackTime = 300;
-    updateTimerDisplay();
-    closeModal();
-    updateStatus();
-    updateMoveHistory();
-});
-
-socket.on('chat-message', data => {
-    if (data.matchId !== currentMatch) return;
+socket.on("chat-message", data => {
+    if (data.matchId !== currentMatch || isSpectator) return;
     appendChatMessage(data.sender, data.text);
 });
 
-socket.on('admin-response', (data) => {
-    if (data.success) {
-        alert("Match created successfully!");
-    } else {
-        alert("Invalid Admin Username or Password!");
-    }
-});
-
-function renderMatches(matches) {
-    const listEl = document.getElementById("matches-list");
-    if (!matches || !matches.length) {
-        listEl.innerHTML = '<p style="color:#94a3b8; font-size:1.4rem; padding: 10px;">No active matches found.</p>';
+socket.on("admin-verify-response", data => {
+    if (!data.success) {
+        alert("❌ Invalid Admin Username or Password!");
+        document.getElementById("admin-password").value = "";
         return;
     }
 
-    listEl.innerHTML = matches.map(m => {
-        const isFull = m.p1Joined && m.p2Joined;
+    isAdmin = true;
+    authenticatedAdmin = {
+        username: document.getElementById("admin-username").value.trim(),
+        password: document.getElementById("admin-password").value
+    };
 
-        return `
-            <div class="match">
-                <div><strong>White:</strong> ${m.p1} <span class="status-dot ${m.p1Joined ? 'online' : 'offline'}"></span></div>
-                <div><strong>Black:</strong> ${m.p2} <span class="status-dot ${m.p2Joined ? 'online' : 'offline'}"></span></div>
-                <div style="margin-top: 10px;">
-                    ${isFull 
-                        ? `<button class="btn-secondary" onclick="spectateMatch('${m.id}', '${m.p1}', '${m.p2}')">Watch Match</button>`
-                        : `<button onclick="joinMatch('${m.id}', '${m.p1}', '${m.p2}', ${m.p1Joined || false}, ${m.p2Joined || false})">Join Game</button>`
-                    }
-                </div>
-            </div>
-        `;
-    }).join('');
+    document.getElementById("admin-login-step").style.display = "none";
+    document.getElementById("admin-match-step").style.display = "flex";
+
+    alert("✅ Admin login successful!");
+});
+
+socket.on("admin-response", data => {
+    if (!data.success) {
+        alert("❌ " + (data.message || "Unable to create match."));
+        return;
+    }
+
+    alert("✅ " + data.message);
+
+    document.getElementById("admin-match-name").value = "";
+    document.getElementById("admin-player-1").value = "";
+    document.getElementById("admin-player-2").value = "";
+
+    closeAdminPortal();
+});
+
+/* ===================== ADMIN ===================== */
+
+function openAdminPortal() {
+    document.getElementById("admin-username").value = "";
+    document.getElementById("admin-password").value = "";
+
+    document.getElementById("admin-match-name").value = "";
+    document.getElementById("admin-player-1").value = "";
+    document.getElementById("admin-player-2").value = "";
+
+    document.getElementById("admin-login-step").style.display =
+        isAdmin ? "none" : "flex";
+
+    document.getElementById("admin-match-step").style.display =
+        isAdmin ? "flex" : "none";
+
+    document.getElementById("admin-modal").style.display = "flex";
 }
 
+function loginAdmin() {
+    const username = document.getElementById("admin-username").value.trim();
+    const password = document.getElementById("admin-password").value;
+
+    if (!username || !password) {
+        alert("Please enter username and password.");
+        return;
+    }
+
+    socket.emit("verify-admin", { username, password });
+}
+
+function createAdminMatch() {
+    if (!isAdmin || !authenticatedAdmin) {
+        alert("Please login as admin first.");
+        return;
+    }
+
+    const tournamentName =
+        document.getElementById("admin-match-name").value.trim();
+
+    const p1 =
+        document.getElementById("admin-player-1").value.trim();
+
+    const p2 =
+        document.getElementById("admin-player-2").value.trim();
+
+    if (!tournamentName || !p1 || !p2) {
+        alert("Please enter tournament name and both player names.");
+        return;
+    }
+
+    socket.emit("create-match-admin", {
+        username: authenticatedAdmin.username,
+        password: authenticatedAdmin.password,
+        tournamentName,
+        p1,
+        p2
+    });
+}
+
+function adminLogout() {
+    isAdmin = false;
+    authenticatedAdmin = null;
+    closeAdminPortal();
+}
+
+function closeAdminPortal() {
+    document.getElementById("admin-modal").style.display = "none";
+}
+
+/* ===================== LOBBY ===================== */
+
+function escapeHTML(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function renderMatches(matches) {
+    const list = document.getElementById("matches-list");
+
+    if (!matches || !matches.length) {
+        list.innerHTML = '<div class="empty-state">No active matches.</div>';
+        return;
+    }
+
+    list.innerHTML = matches.map(m => {
+        if (m.isBot) {
+            return `
+                <article class="match bot-match">
+                    <div class="match-title">🤖 ${escapeHTML(m.tournamentName)}</div>
+                    <div class="match-players">
+                        <div>
+                            <strong>White:</strong> ${escapeHTML(m.p1)}
+                            <span class="status-dot ${m.p1Joined ? "online" : "offline"}"></span>
+                        </div>
+                        <div>
+                            <strong>Black:</strong> 🤖 Nipun
+                            <span class="status-dot online"></span>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary full-btn"
+                        ${m.p1Joined ? "disabled" : ""}
+                        onclick="joinBotMatch('${escapeHTML(m.id)}', ${m.p1Joined})">
+                        ${m.p1Joined ? "Player Already Joined" : "🤖 Play with Nipun"}
+                    </button>
+                </article>
+            `;
+        }
+
+        const full = m.p1Joined && m.p2Joined;
+
+        return `
+            <article class="match">
+                <div class="match-title">🏆 ${escapeHTML(m.tournamentName)}</div>
+
+                <div class="match-players">
+                    <div>
+                        <strong>White:</strong> ${escapeHTML(m.p1)}
+                        <span class="status-dot ${m.p1Joined ? "online" : "offline"}"></span>
+                    </div>
+                    <div>
+                        <strong>Black:</strong> ${escapeHTML(m.p2)}
+                        <span class="status-dot ${m.p2Joined ? "online" : "offline"}"></span>
+                    </div>
+                </div>
+
+                <div class="match-actions">
+                    ${
+                        full
+                        ? `<button class="btn btn-secondary"
+                             onclick="spectateMatch('${escapeHTML(m.id)}','${escapeHTML(m.p1)}','${escapeHTML(m.p2)}','${escapeHTML(m.tournamentName)}')">
+                             👀 Watch Match
+                           </button>`
+                        : `<button class="btn btn-primary"
+                             onclick="joinMatch('${escapeHTML(m.id)}','${escapeHTML(m.p1)}','${escapeHTML(m.p2)}',${m.p1Joined},${m.p2Joined},'${escapeHTML(m.tournamentName)}')">
+                             ⚔️ Join Game
+                           </button>`
+                    }
+                </div>
+            </article>
+        `;
+    }).join("");
+}
+
+/* ===================== BOARD ===================== */
+
 function initBoard() {
-    if (board) { board.resize(); return; }
+    if (board) {
+        board.resize();
+        return;
+    }
 
-    board = Chessboard('board', {
+    board = Chessboard("board", {
         draggable: true,
-        position: 'start',
-        pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
-        onDrop: function(source, target) {
-            if (!currentMatch || !myColor) return 'snapback';
-            if (game.turn() !== myColor) return 'snapback';
+        position: "start",
+        moveSpeed: 0,
+        snapSpeed: 0,
+        snapbackSpeed: 0,
+        pieceTheme: "https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png",
 
-            const move = game.move({ from: source, to: target, promotion: 'q' });
-            if (!move) return 'snapback';
+        onDrop: (source, target) => {
+            if (isSpectator || !currentMatch || !myColor) return "snapback";
+            if (game.turn() !== myColor) return "snapback";
+            if (game.game_over()) return "snapback";
 
-            board.position(game.fen());
-            socket.emit('move', { matchId: currentMatch, move: move, fen: game.fen() });
+            let move;
 
-            if (game.in_check()) playSound('check');
-            else if (move.captured) playSound('capture');
-            else playSound('move');
+            try {
+                move = game.move({
+                    from: source,
+                    to: target,
+                    promotion: "q"
+                });
+            } catch {
+                move = null;
+            }
 
+            if (!move) return "snapback";
+
+            board.position(game.fen(), false);
+
+            socket.emit("move", {
+                matchId: currentMatch,
+                move: {
+                    from: move.from,
+                    to: move.to,
+                    promotion: move.promotion || "q"
+                }
+            });
+
+            if (game.in_check()) playSound("check");
+            else if (move.captured) playSound("capture");
+            else playSound("move");
+
+            highlightLastMove(source, target);
             updateStatus();
             updateMoveHistory();
-            highlightLastMove(source, target);
+            updateTimerDisplay();
         }
     });
 
-    window.addEventListener('resize', () => { if (board) board.resize(); });
+    window.addEventListener("resize", () => {
+        if (board) board.resize();
+    });
 }
 
 function highlightLastMove(from, to) {
-    $('#board .square-55d63').removeClass('highlight-square');
-    $(`#board .square-${from}`).addClass('highlight-square');
-    $(`#board .square-${to}`).addClass('highlight-square');
+    $("#board .square-55d63").removeClass("highlight-square");
+    $(`#board .square-${from}`).addClass("highlight-square");
+    $(`#board .square-${to}`).addClass("highlight-square");
 }
 
 function setBoardTheme(theme) {
-    const boardEl = $('#board');
-    boardEl.removeClass('theme-wood theme-neon');
-    if (theme === 'wood') boardEl.addClass('theme-wood');
-    if (theme === 'neon') boardEl.addClass('theme-neon');
+    $("#board").removeClass("theme-wood theme-neon");
+
+    if (theme === "wood") $("#board").addClass("theme-wood");
+    if (theme === "neon") $("#board").addClass("theme-neon");
 }
+
+/* ===================== MATCH JOIN ===================== */
+
+function joinBotMatch(id, alreadyJoined) {
+    if (alreadyJoined) {
+        alert("This Nipun match already has a player.");
+        return;
+    }
+
+    const nickname = prompt("Enter your nickname:");
+
+    if (!nickname || !nickname.trim()) {
+        alert("Please enter a nickname.");
+        return;
+    }
+
+    myColor = "w";
+    myName = nickname.trim();
+    whitePlayerName = myName;
+    blackPlayerName = "🤖 Nipun";
+    currentMatch = id;
+    isSpectator = false;
+
+    socket.emit("claim-seat", { matchId: id, color: "w" });
+    socket.emit("set-player-name", {
+        matchId: id,
+        color: "w",
+        name: myName
+    });
+    socket.emit("join-match", id);
+
+    startGameWindow();
+}
+
+function joinMatch(id, p1, p2, p1Joined, p2Joined, tournamentName) {
+    const choices = [];
+
+    if (!p1Joined) choices.push(`"${p1}" = White`);
+    if (!p2Joined) choices.push(`"${p2}" = Black`);
+
+    if (!choices.length) {
+        alert("Both player slots are already taken.");
+        return;
+    }
+
+    const choice = prompt(
+        "Choose your slot:\n\n" +
+        choices.join("\n") +
+        "\n\nType the player name exactly:"
+    );
+
+    if (choice === p1 && !p1Joined) {
+        myColor = "w";
+        myName = p1;
+        socket.emit("claim-seat", { matchId: id, color: "w" });
+    } else if (choice === p2 && !p2Joined) {
+        myColor = "b";
+        myName = p2;
+        socket.emit("claim-seat", { matchId: id, color: "b" });
+    } else {
+        alert("Invalid selection or slot already taken.");
+        return;
+    }
+
+    currentMatch = id;
+    currentTournamentName = tournamentName;
+    whitePlayerName = p1;
+    blackPlayerName = p2;
+    isSpectator = false;
+
+    socket.emit("join-match", id);
+    startGameWindow();
+}
+
+function spectateMatch(id, p1, p2) {
+
+    currentMatch = id;
+
+    myColor = null;
+
+    myName = "Spectator";
+
+    whitePlayerName = p1;
+
+    blackPlayerName = p2;
+
+
+    socket.emit("join-match", id);
+
+
+    document.getElementById("lobbyView").style.display = "none";
+
+    document.getElementById("gameView").style.display = "flex";
+
+
+    // Spectators cannot chat
+    document.querySelector(".chat-container").style.display = "none";
+
+
+    document.getElementById("undoBtn").style.display = "none";
+
+    document.getElementById("resetBtn").style.display = "none";
+
+    document.getElementById("exitBtn").style.display = "inline-block";
+
+
+    setTimeout(() => {
+
+        initBoard();
+
+        board.orientation("white");
+
+        board.position(game.fen());
+
+        board.resize();
+
+        startClocks();
+
+    }, 50);
+
+
+    updateStatus();
+
+    updateMoveHistory();
+}
+
+/* ===================== GAME WINDOW ===================== */
+
+function startGameWindow() {
+
+    modalShown = false;
+
+    whiteTime = 300;
+    blackTime = 300;
+
+    game.reset();
+
+    document.getElementById("chat-messages").innerHTML = "";
+
+    document.getElementById("lobbyView").style.display = "none";
+
+    document.getElementById("gameView").style.display = "flex";
+
+    /*
+       CHAT RULE:
+
+       Nipun Bot = NO CHAT
+       Normal tournament = CHAT
+    */
+    if (currentMatch === "nipun_bot_tournament") {
+
+        document.querySelector(".chat-container").style.display = "none";
+
+    } else {
+
+        document.querySelector(".chat-container").style.display = "flex";
+
+    }
+
+    document.getElementById("undoBtn").style.display = "inline-block";
+    document.getElementById("resetBtn").style.display = "inline-block";
+    document.getElementById("exitBtn").style.display = "inline-block";
+
+
+    setTimeout(() => {
+
+        initBoard();
+
+        if (myColor === "b") {
+
+            board.orientation("black");
+
+        } else {
+
+            board.orientation("white");
+
+        }
+
+        board.position(game.fen());
+
+        board.resize();
+
+        updateTimerDisplay();
+
+        startClocks();
+
+    }, 50);
+
+
+    updateStatus();
+    updateMoveHistory();
+}
+function updatePlayerHeader() {
+    document.getElementById("game-tournament-name").textContent =
+        currentTournamentName;
+
+    document.getElementById("game-white-name").textContent =
+        "♙ " + whitePlayerName;
+
+    document.getElementById("game-black-name").textContent =
+        "♟ " + blackPlayerName;
+}
+
+/* ===================== CLOCKS ===================== */
 
 function startClocks() {
     clearInterval(timerInterval);
+
+    if (isSpectator) return;
+
     timerInterval = setInterval(() => {
         if (!currentMatch || game.game_over()) return;
 
-        if (game.turn() === 'w') {
-            if (whiteTime > 0) whiteTime--;
+        if (game.turn() === "w") {
+            whiteTime = Math.max(0, whiteTime - 1);
+            if (whiteTime === 0) handleTimeout("White");
         } else {
-            if (blackTime > 0) blackTime--;
+            blackTime = Math.max(0, blackTime - 1);
+            if (blackTime === 0) handleTimeout("Black");
         }
+
         updateTimerDisplay();
     }, 1000);
 }
 
+function handleTimeout(player) {
+    clearInterval(timerInterval);
+
+    const winner =
+        player === "White" ? blackPlayerName : whitePlayerName;
+
+    showGameOverModal(`${player} ran out of time. ${winner} wins!`);
+}
+
 function updateTimerDisplay() {
-    const format = (sec) => {
-        const m = Math.floor(sec / 60).toString().padStart(2, '0');
-        const s = (sec % 60).toString().padStart(2, '0');
+    const format = sec => {
+        const m = Math.floor(sec / 60).toString().padStart(2, "0");
+        const s = (sec % 60).toString().padStart(2, "0");
         return `${m}:${s}`;
     };
-    document.getElementById('white-time').innerText = format(whiteTime);
-    document.getElementById('black-time').innerText = format(blackTime);
 
-    if (game.turn() === 'w') {
-        $('#white-timer-card').addClass('active-timer');
-        $('#black-timer-card').removeClass('active-timer');
+    document.getElementById("white-time").textContent = format(whiteTime);
+    document.getElementById("black-time").textContent = format(blackTime);
+
+    $("#white-timer-card").toggleClass("active-timer", game.turn() === "w");
+    $("#black-timer-card").toggleClass("active-timer", game.turn() === "b");
+}
+
+/* ===================== STATUS ===================== */
+
+function updateStatus() {
+    if (!currentMatch) return;
+
+    let status;
+
+    if (game.in_checkmate()) {
+        const winner =
+            game.turn() === "w" ? blackPlayerName : whitePlayerName;
+
+        status = "♚ Checkmate!";
+
+        if (!modalShown) {
+            showGameOverModal(`${winner} Won by Checkmate!`);
+            modalShown = true;
+            clearInterval(timerInterval);
+        }
+    } else if (game.in_draw()) {
+        status = "½–½ Game Over: Draw";
+
+        if (!modalShown) {
+            showGameOverModal("Game Over: Draw!");
+            modalShown = true;
+            clearInterval(timerInterval);
+        }
+    } else if (game.in_check()) {
+        status =
+            `♟ Check! ${
+                game.turn() === "w" ? "White" : "Black"
+            }'s turn`;
     } else {
-        $('#black-timer-card').addClass('active-timer');
-        $('#white-timer-card').removeClass('active-timer');
+        const turn =
+            game.turn() === "w" ? "White" : "Black";
+
+        status = isSpectator
+            ? `${turn}'s Turn`
+            : `${turn}'s Turn${game.turn() === myColor ? " — Your Turn" : " — Opponent's Turn"}`;
+    }
+
+    document.getElementById("status").textContent = status;
+}
+
+/* ===================== MOVE HISTORY ===================== */
+
+function updateMoveHistory() {
+    const historyEl = document.getElementById("move-history");
+    const moves = game.history();
+
+    if (!moves.length) {
+        historyEl.textContent = "No moves played yet.";
+        document.getElementById("captured-pieces").textContent = "-";
+        return;
+    }
+
+    let html = "<ol class='history-list'>";
+
+    for (let i = 0; i < moves.length; i += 2) {
+        html += `
+            <li>
+                <strong>${Math.floor(i / 2) + 1}.</strong>
+                ${escapeHTML(moves[i] || "")}
+                ${escapeHTML(moves[i + 1] || "")}
+            </li>
+        `;
+    }
+
+    html += "</ol>";
+    historyEl.innerHTML = html;
+
+    const verbose = game.history({ verbose: true });
+    const captured = verbose
+        .filter(m => m.captured)
+        .map(m => m.captured.toUpperCase());
+
+    document.getElementById("captured-pieces").textContent =
+        captured.join(" ") || "-";
+}
+
+/* ===================== CHAT ===================== */
+
+function sendChatMessage(event) {
+    event.preventDefault();
+
+    const input = document.getElementById("chat-input");
+    const text = input.value.trim();
+
+    if (!text || !currentMatch || isSpectator) return;
+
+    socket.emit("chat-message", {
+        matchId: currentMatch,
+        sender: myName,
+        text
+    });
+
+    input.value = "";
+}
+
+function appendChatMessage(sender, text) {
+    const container = document.getElementById("chat-messages");
+
+    const msg = document.createElement("div");
+    msg.className = "chat-msg";
+
+    const strong = document.createElement("strong");
+    strong.textContent = sender + ": ";
+
+    const span = document.createElement("span");
+    span.textContent = text;
+
+    msg.appendChild(strong);
+    msg.appendChild(span);
+
+    container.appendChild(msg);
+    container.scrollTop = container.scrollHeight;
+}
+
+/* ===================== CONTROLS ===================== */
+
+function requestUndo() {
+    if (!currentMatch || isSpectator) return;
+    socket.emit("undo", { matchId: currentMatch });
+}
+
+function requestReset() {
+    if (!currentMatch || isSpectator) return;
+
+    if (confirm("Reset this match to the starting position?")) {
+        socket.emit("reset", { matchId: currentMatch });
     }
 }
 
-function joinMatch(id, p1, p2, p1Joined, p2Joined) {
-    let options = [];
-    if (!p1Joined) options.push(`"${p1}" (White)`);
-    if (!p2Joined) options.push(`"${p2}" (Black)`);
+function exitToLobby() {
+    if (currentMatch) socket.emit("leave-match", currentMatch);
 
-    let choice = prompt(`Choose your slot:\nType ${options.join(' or ')}:`);
+    currentMatch = null;
+    myColor = null;
+    myName = "Player";
+    isSpectator = false;
 
-    if (choice === p1 && !p1Joined) { 
-        myColor = 'w'; 
-        myName = p1; 
-        socket.emit('claim-seat', { matchId: id, color: 'w' });
-    } else if (choice === p2 && !p2Joined) { 
-        myColor = 'b'; 
-        myName = p2; 
-        socket.emit('claim-seat', { matchId: id, color: 'b' });
-    } else {
-        return alert("Invalid selection or slot already taken!");
-    }
+    clearInterval(timerInterval);
 
-    whitePlayerName = p1; 
-    blackPlayerName = p2;
-    currentMatch = id; 
-    modalShown = false;
-    whiteTime = 300; 
-    blackTime = 300;
-
-    socket.emit('join-match', id);
-    game.reset();
     closeModal();
 
-    document.querySelector(".chat-container").style.display = "flex";
-    document.getElementById("undoBtn").style.display = "inline-block";
-    document.getElementById("resetBtn").style.display = "inline-block";
+    game.reset();
+
+    document.getElementById("gameView").style.display = "none";
+    document.getElementById("lobbyView").style.display = "block";
 
     document.getElementById("chat-messages").innerHTML = "";
-    document.getElementById("lobbyView").style.display = "none";
-    document.getElementById("gameView").style.display = "flex";
 
-    setTimeout(() => {
-        initBoard();
-        if (myColor === 'b') board.orientation('black');
-        else board.orientation('white');
-        board.position(game.fen());
-        board.resize();
-        startClocks();
-    }, 50);
-
-    updateStatus();
-    updateMoveHistory();
+    if (board) board.position("start", false);
 }
 
-function spectateMatch(id, p1, p2) {
-    currentMatch = id;
-    myColor = null;
-    myName = "Spectator";
-    whitePlayerName = p1;
-    blackPlayerName = p2;
-
-    socket.emit('join-match', id);
-
-    document.getElementById("lobbyView").style.display = "none";
-    document.getElementById("gameView").style.display = "flex";
-
-    document.querySelector(".chat-container").style.display = "none";
-    document.getElementById("undoBtn").style.display = "none";
-    document.getElementById("resetBtn").style.display = "none";
-    document.getElementById("exitBtn").style.display = "inline-block";
-
-    setTimeout(() => {
-        initBoard();
-        board.orientation('white');
-        board.position(game.fen());
-        board.resize();
-        startClocks();
-    }, 50);
-
-    updateStatus();
-    updateMoveHistory();
-}
+/* ===================== GAME OVER ===================== */
 
 function showGameOverModal(text) {
-    document.getElementById("winner-text").innerText = text;
+    document.getElementById("winner-text").textContent = text;
     document.getElementById("game-over-modal").style.display = "flex";
 }
 
@@ -435,151 +1005,13 @@ function closeModal() {
     modalShown = false;
 }
 
-function adminLogin() {
-    document.getElementById("admin-username").value = "";
-    document.getElementById("admin-password").value = "";
-    document.getElementById("admin-p1").value = "";
-    document.getElementById("admin-p2").value = "";
-    
-    document.getElementById("admin-modal-title").innerText = "Admin Login";
-    document.getElementById("admin-login-step").style.display = "flex";
-    document.getElementById("admin-match-step").style.display = "none";
-    
-    document.getElementById("admin-modal").style.display = "flex";
-}
-
-function closeAdminModal() {
-    document.getElementById("admin-modal").style.display = "none";
-    authenticatedAdmin = null;
-}
-
-function verifyAdminAuth(event) {
-    event.preventDefault();
-    const username = document.getElementById("admin-username").value.trim();
-    const password = document.getElementById("admin-password").value.trim();
-
-    if (!username || !password) {
-        return alert("Please fill in both username and password!");
-    }
-
-    socket.emit('verify-admin', { username, password });
-}
-
-socket.on('admin-verify-response', (data) => {
-    if (data.success) {
-        authenticatedAdmin = data.credentials;
-        document.getElementById("admin-modal-title").innerText = "Tournament Players";
-        document.getElementById("admin-login-step").style.display = "none";
-        document.getElementById("admin-match-step").style.display = "flex";
-    } else {
-        alert("Invalid Admin Username or Password!");
-        document.getElementById("admin-password").value = "";
+document.addEventListener("keydown", event => {
+    if (event.key === "Escape") {
+        closeAdminPortal();
+        closeModal();
     }
 });
-
-function submitCreateMatch(event) {
-    event.preventDefault();
-    const p1 = document.getElementById("admin-p1").value.trim();
-    const p2 = document.getElementById("admin-p2").value.trim();
-
-    if (!p1 || !p2) return alert("Please enter both player names!");
-
-    socket.emit('create-match-admin', {
-        username: authenticatedAdmin.username,
-        password: authenticatedAdmin.password,
-        p1: p1,
-        p2: p2
-    });
-
-    closeAdminModal();
-}
-
-function requestUndo() {
-    if (!currentMatch) return;
-    socket.emit('undo', { matchId: currentMatch });
-}
-
-function requestReset() {
-    if (!currentMatch) return;
-    if (confirm("Reset the match?")) socket.emit('reset', { matchId: currentMatch });
-}
-
-function sendChatMessage(event) {
-    event.preventDefault();
-    const inputEl = document.getElementById("chat-input");
-    const text = inputEl.value.trim();
-    if (!text || !currentMatch) return;
-    socket.emit('chat-message', { matchId: currentMatch, sender: myName, text: text });
-    inputEl.value = "";
-}
-
-function appendChatMessage(sender, text) {
-    const chatContainer = document.getElementById("chat-messages");
-    const msgEl = document.createElement("div");
-    msgEl.className = "chat-msg";
-    msgEl.innerHTML = `<strong>${sender}:</strong> ${text}`;
-    chatContainer.appendChild(msgEl);
-    chatContainer.scrollTop = chatContainer.scrollHeight;
-}
-
-function updateMoveHistory() {
-    const historyEl = document.getElementById("move-history");
-    const moves = game.history();
-
-    if (!moves.length) {
-        historyEl.innerHTML = "No moves played yet.";
-        document.getElementById("captured-pieces").innerText = "-";
-        return;
-    }
-
-    let historyHTML = "<ol class='history-list'>";
-    for (let i = 0; i < moves.length; i += 2) {
-        const moveNum = Math.floor(i / 2) + 1;
-        historyHTML += `<li><strong>${moveNum}.</strong> ${moves[i] || ""} ${moves[i + 1] || ""}</li>`;
-    }
-    historyHTML += "</ol>";
-    historyEl.innerHTML = historyHTML;
-
-    const historyFull = game.history({ verbose: true });
-    let captured = [];
-    historyFull.forEach(m => { if (m.captured) captured.push(m.captured.toUpperCase()); });
-    document.getElementById("captured-pieces").innerText = captured.join(" ") || "-";
-}
-
-function exitToLobby() {
-    if (currentMatch) socket.emit('leave-match', currentMatch);
-    currentMatch = null; myColor = null; myName = "";
-    clearInterval(timerInterval);
-    closeModal();
-    game.reset();
-
-    document.querySelector(".chat-container").style.display = "flex";
-    document.getElementById("undoBtn").style.display = "inline-block";
-    document.getElementById("resetBtn").style.display = "inline-block";
-
-    document.getElementById("gameView").style.display = "none";
-    document.getElementById("lobbyView").style.display = "block";
-}
-
-function updateStatus() {
-    if (!currentMatch) return;
-    let status = "";
-    if (game.in_checkmate()) {
-        const winner = game.turn() === 'w' ? blackPlayerName : whitePlayerName;
-        status = `Game Over: Checkmate!`;
-        if (!modalShown) { showGameOverModal(`${winner} Won!`); modalShown = true; }
-    } else if (game.in_draw()) {
-        status = "Game Over: Draw";
-        if (!modalShown) { showGameOverModal("Game Over: Draw!"); modalShown = true; }
-    } else if (game.in_check()) {
-        status = `Check! (${game.turn() === 'w' ? 'White' : 'Black'}'s turn)`;
-    } else {
-        const turnText = game.turn() === 'w' ? "White" : "Black";
-        const isMyTurn = game.turn() === myColor ? " (Your Turn)" : " (Opponent's Turn)";
-        status = `${turnText}'s Turn${isMyTurn}`;
-    }
-    document.getElementById("status").innerText = status;
-}
 </script>
+
 </body>
 </html>
